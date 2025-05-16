@@ -108,6 +108,19 @@ void RequestParser::parseQueryParams(const std::string& uri)
     }
 }
 
+void RequestParser::display_request()
+{
+    std::cout << "Method used is: " << method << std::endl;
+    std::cout << "uri is: " << uri << std::endl;
+    std::cout << "Headers are: " << std::endl;
+    std::map<std::string, std::string>::iterator it;
+    for (it = headers.begin(); it != headers.end(); ++it) 
+    {
+        std::cout << "Key : " << it->first << ", Value : " << it->second << std::endl;
+    }
+    std::cout << "Body is: " << body << std::endl;
+}
+
 //Getter
 
 const std::string& RequestParser::getMethod() const { return method; }

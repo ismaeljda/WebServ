@@ -28,6 +28,7 @@ class RequestParser
         bool isvalidVersion(const std::string& version) const;
         bool isvalidHeader(const std::map<std::string, std::string> header) const;
         bool parse(std::string& str);
+        void display_request();
 
         //getter
         const std::string& getMethod() const;

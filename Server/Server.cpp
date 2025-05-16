@@ -87,16 +87,14 @@ void Server::run()
                     else
                     {
                         std::cout << "Message from client: " << buffer;
-
-                        std::string body = "<!DOCTYPE html><html><body><h1>Hello, world!</h1></body></html>";
-                        std::string html = 
-                            "HTTP/1.1 200 OK\r\n"
-                            "Content-Type: text/html\r\n"
-                            "Content-Length: " + std::to_string(body.size()) + "\r\n"
-                            "\r\n" +
-                            body;
-
-                        send(fds[i].fd, html.c_str(), html.size(), 0);
+                        RequestParser request;
+                        std::string req = buffer;
+                        request.parse(req);
+                        // request.display_request();
+                        if(handle_request(request) == GET)
+                        {
+                            send(fds[i].fd, response_html.c_str(), response_html.size(), 0);
+                        }
                         close(fds[i].fd);
                         fds.erase(fds.begin() + i);
                         --i;
@@ -107,8 +105,41 @@ void Server::run()
     }
 }
 
+type Server::handle_request(RequestParser& req)
+{
+    //Devra etre gerer differement quand simon aura fait le conf
+    if(req.getMethod() == "GET")
+    {
+        std::string uri = req.getUri();
+        std::string path = "www" + uri;
+        std::ifstream file(path.c_str());
+        std::string line;
+        std::stringstream ss;
+        while (std::getline(file, line))
+        {
+            ss << line;
+        }
+        std::string body = ss.str();
+        std::stringstream content_length_stream;
+        content_length_stream << body.size();
+        std::string content_length = content_length_stream.str();
+        std::map<std::string, std::string> headers = req.getHeaders();
+        std::string mine = extractMimeType(headers["Accept"]);
+        response_html = 
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: " + mine +"\r\n"
+        "Content-Length: " + content_length + "\r\n"
+        "\r\n" + body;
+        return GET;
+    }
+    else
+    {
+        return POST;
+    }
+}
+
 int main()
 {
-    Server serv(9996);
+    Server serv(9989);
     serv.run();
 }
