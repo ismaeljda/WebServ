@@ -22,7 +22,7 @@ struct ServerConfig {
 	int listen;
 	std::string server_name;
 	size_t client_max_body_size;
-	std::vector<LocationConfig> location;
+	std::vector<LocationConfig> locations;
 
 	ServerConfig() : listen(80), client_max_body_size(100000) {}
 };

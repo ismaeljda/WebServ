@@ -6,15 +6,16 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <cstdlib>
 #include "ConfigStruct.hpp"
 
 class ConfigParser {
 	private :
-		std::vector<ServerConfig> server;
+		std::vector<ServerConfig> servers;
 
 		void parseServerBlock(std::ifstream &file, std::string &line); 
-		void parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server);
 		void parseDirective(const std::string &line, ServerConfig &server);
+		void parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server);
 		void parseLocationDirective(const std::string &line, LocationConfig &location);
 
 		std::string trim(const std::string &s);
@@ -25,7 +26,7 @@ class ConfigParser {
 		ConfigParser(const std::string &path);
 		~ConfigParser();
 
-		const std::vector<ServerConfig>& getServer() const;
+		const std::vector<ServerConfig>& getServers() const;
 };
 
 #endif
