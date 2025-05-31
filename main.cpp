@@ -17,7 +17,14 @@ int main(int argc, char **argv)
             std::cout << "========== SERVER " << i + 1 << " ==========" << std::endl;
             std::cout << "Port: " << s.listen << std::endl;
             std::cout << "Server name: " << s.server_name << std::endl;
-            std::cout << "Max body size: " << s.client_max_body_size << std::endl;
+
+            std::cout << "Max body size (octets): " << s.client_max_body_size << std::endl;
+            if (s.client_max_body_size < 1024)
+                std::cout << "  ➤ ~ " << s.client_max_body_size << " B" << std::endl;
+            else if (s.client_max_body_size < 1024 * 1024)
+                std::cout << "  ➤ ~ " << s.client_max_body_size / 1024 << " K" << std::endl;
+            else
+                std::cout << "  ➤ ~ " << s.client_max_body_size / (1024 * 1024) << " M" << std::endl;
 
             for (size_t j = 0; j < s.locations.size(); ++j) {
                 const LocationConfig& loc = s.locations[j];

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <cstdlib>
+#include <cctype>
 #include "ConfigStruct.hpp"
 
 class ConfigParser {
@@ -21,11 +22,12 @@ class ConfigParser {
 		std::string trim(const std::string &s);
 		std::vector<std::string> split(const std::string &s);
 		bool startWithWord(const std::string &line, const std::string &prefix);
-
-	public :
+		
+		public :
 		ConfigParser(const std::string &path);
 		~ConfigParser();
-
+		
+		size_t parseSize(const std::string &sizeStr);
 		const std::vector<ServerConfig>& getServers() const;
 };
 

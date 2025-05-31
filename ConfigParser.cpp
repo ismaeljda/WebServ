@@ -45,11 +45,14 @@ void ConfigParser::parseDirective(const std::string &line, ServerConfig &server)
 	std::string key = tokens[0];
 
 	if (key == "listen" && tokens.size() >= 2)
-		server.listen = std::atoi(tokens[1].c_str());
+		server.listen = parseSize(tokens[1]);
 	else if (key == "server_name" && tokens.size() >= 2)
 		server.server_name = tokens[1];
-	else if (key == "client_max_body_size" && tokens.size() >= 2)
-		server.client_max_body_size = std::atoi(tokens[1].c_str());
+	else if (key == "client_max_body_size" && tokens.size() >= 2) {
+		if (tokens.size() != 2)
+    	    throw std::runtime_error("Erreur : mauvais format pour client_max_body_size : " + line);
+		server.client_max_body_size = parseSize(tokens[1]);
+	}
 	else 
 		std::cerr << "Directive inconnue dans server block : " << line << std::endl;
 }
@@ -149,4 +152,45 @@ std::vector<std::string> ConfigParser::split(const std::string &s) {
 
 bool ConfigParser::startWithWord(const std::string &line, const std::string &prefix) {
 	return line.compare(0, prefix.length(), prefix) == 0;
+}
+
+size_t ConfigParser::parseSize(const std::string &sizeStr) {
+    if (sizeStr.empty())
+        throw std::runtime_error("Erreur : client_max_body_size vide.");
+
+    size_t num = 0;
+    size_t i = 0;
+
+    // Vérifie que les premiers caractères sont bien des chiffres
+    while (i < sizeStr.length() && std::isdigit(sizeStr[i])) {
+        num = num * 10 + (size_t)(sizeStr[i] - '0');
+        ++i;
+    }
+
+    // Si aucun chiffre n'a été trouvé
+    if (i == 0)
+        throw std::runtime_error("Erreur : aucun chiffre trouvé dans client_max_body_size : " + sizeStr);
+
+    // Si une unité est présente
+    if (i < sizeStr.length()) {
+        char unit = std::toupper(sizeStr[i]);
+
+        // Vérifie qu'il n'y a pas de caractères supplémentaires
+        if (i + 1 != sizeStr.length())
+            throw std::runtime_error("Erreur : unité invalide ou trop longue dans client_max_body_size : " + sizeStr);
+
+        switch (unit) {
+            case 'K': return num * 1024;
+            case 'M': return num * 1024 * 1024;
+            case 'G': return num * 1024 * 1024 * 1024;
+            default:
+                throw std::runtime_error("Erreur : unité inconnue pour client_max_body_size : " + std::string(1, unit));
+        }
+    }
+
+    // Vérification de la taille minimale (optionnel mais recommandé)
+    if (num < 512)
+        throw std::runtime_error("Erreur : client_max_body_size trop petit (< 512 octets)");
+
+    return num;
 }
