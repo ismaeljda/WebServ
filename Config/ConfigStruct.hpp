@@ -1,7 +1,8 @@
-#ifndef CONFIG_HPP
-#define CONFIG_HPP
+#ifndef CONFIGSTRUCT_HPP
+#define CONFIGSTRUCT_HPP
 
 #include <vector>
+#include <map>
 #include <string>
 
 struct LocationConfig {
@@ -23,8 +24,9 @@ struct ServerConfig {
 	std::string server_name;
 	size_t client_max_body_size;
 	std::vector<LocationConfig> locations;
+	std::map<int, std::string> error_pages;
 
-	ServerConfig() : listen(80), client_max_body_size(100000) {}
+	ServerConfig() : listen(80), client_max_body_size(0) {}
 };
 
 #endif

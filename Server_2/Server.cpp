@@ -1,36 +1,35 @@
 #include "Server.hpp"
 
-Server::Server(int port)
-{
+Server::Server(const ServerConfig &conf) : config(conf){
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd == -1) 
-    {
-        std::cout << "Failed to create socket." << std::endl;
-        exit(EXIT_FAILURE);
-    }
-    sockaddr_in sockaddr; // Ici sockaddr_in pour stocker les infos des addresses ip
-    sockaddr.sin_family = AF_INET; //pour ip_V4
-    sockaddr.sin_addr.s_addr = INADDR_ANY; //INADDR_ANY pour lier la socket a toutes les addresses disponibles sur le reseau
-    sockaddr.sin_port = htons(port); // On ecoute sur le port 9999et htons c'est pour convertir le port en un format reseau
+    if (server_fd == -1)
+        throw std::runtime_error("Erreur: Creation Socket a echoue");
 
-    //Ici on va associer la socket a une addresse ip et un port pour qu'elle puisse ecouter les connexions a partir de cette addresse et de ce port local
-    if (bind(server_fd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) 
-    {
-        std::cout << "Failed to bind to port " << port << std::endl;
-        exit(EXIT_FAILURE);
+    sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    std::cout << "le port config.listen est " << conf.listen << std::endl;
+    addr.sin_port = htons(conf.listen);
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+	    perror("setsockopt");
+	    exit(EXIT_FAILURE);
     }
-
-    //Ici pour accepter les connexions sur la socket avec un max de 10 connexions dans la file d'attente
-    if (listen(server_fd, 10) < 0) 
-    {
-        std::cout << "Failed to listen on socket." << std::endl;
-        exit(EXIT_FAILURE);
+    if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+	perror("bind");
+	exit(EXIT_FAILURE);
     }
-    // initialisation du poll
-    server_pollfd.fd = server_fd; // on associe la socket du serveur au poll pour qu'il puisse ecouter
-    server_pollfd.events = POLLIN; // On surveille une possible nouvelle connexion, en gros ca previent si il y a une nouvelle connection sur le socket du server
-    server_pollfd.revents = 0;     // on initalise a 0, ce champs sera rempli par poll pour dire ce qu'il s est passe
+    std::cout << "bind OK" << std::endl;
+    if (listen(server_fd, 10) < 0) {
+	perror("listen");
+	exit(EXIT_FAILURE);
+    }
+    std::cout << "listen OK" << std::endl;
+    std::cout << "Server lancé sur le port : " << conf.listen << std::endl;
 
+    server_pollfd.fd = server_fd;
+    server_pollfd.events = POLLIN;
+    server_pollfd.revents = 0;
     fds.push_back(server_pollfd);
 }
 
@@ -41,6 +40,9 @@ Server::~Server()
 
 void Server::run()
 {
+    std::cout << "Le serveur entre dans run() sur le port : " << config.listen << std::endl;
+    std::cout << "fds[0].fd = " << fds[0].fd << ", attendu : " << server_fd << std::endl;
+
     while (true)
     {
         int ret = poll(&fds[0], fds.size(), -1);
@@ -185,6 +187,18 @@ type Server::handle_request(RequestParser& req)
 
 int main()
 {
-    Server serv(9988);
-    serv.run();
+    ConfigParser parser("config.conf");
+    parser.validateServers();
+    const std::vector<ServerConfig> &servers = parser.getServers();
+    std::cout << "Nombre de serveurs parsés : " << servers.size() << std::endl;
+
+    std::vector<Server*> serverInstances;
+    for (size_t i = 0; i < servers.size(); ++i)
+        serverInstances.push_back(new Server(servers[i]));
+
+    for (size_t i = 0; i < serverInstances.size(); ++i)
+        serverInstances[i]->run();
+
+    for (size_t i = 0; i < serverInstances.size(); ++i)
+        delete serverInstances[i];
 }

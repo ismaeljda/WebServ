@@ -12,7 +12,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <string>
+#include <arpa/inet.h>
 #include "../Request/RequestParser.hpp"
+#include "../Config/ConfigParser.hpp"
 
 std::string extractMimeType(std::string& headerValue);
 
@@ -28,12 +30,15 @@ class Server
         int server_fd;
         std::vector<pollfd> fds;
         pollfd server_pollfd;
+        ServerConfig config;
 
         std::string response_html;             // pour stocker les headers HTTP
         std::vector<char> response_body;       // pour stocker le corps binaire (image, etc.)
 
+        Server(const Server &copy);
+        Server &operator=(const Server &copy);
     public:
-        Server(int port);
+        Server(const ServerConfig &conf);
         type handle_request(RequestParser& req);
         ~Server();
         void run();

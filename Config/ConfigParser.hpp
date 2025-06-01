@@ -3,6 +3,8 @@
 
 #include <string>
 #include <vector>
+#include <set>
+#include <unistd.h>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -29,6 +31,8 @@ class ConfigParser {
 		
 		size_t parseSize(const std::string &sizeStr);
 		const std::vector<ServerConfig>& getServers() const;
+
+		void validateServers() const;
 };
 
 #endif

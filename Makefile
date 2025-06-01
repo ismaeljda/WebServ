@@ -1,5 +1,5 @@
 NAME = WebServ
-SRC = Request/RequestParser.cpp Request/utils.cpp Server_2/Server.cpp
+SRC = Request/RequestParser.cpp Request/utils.cpp Server_2/Server.cpp Config/ConfigParser.cpp
 OBJS = ${SRC:.cpp=.o}
 CC = c++
 CFLAGS = -Wall -Wextra -Werror -std=c++98

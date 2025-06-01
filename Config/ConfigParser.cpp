@@ -1,5 +1,7 @@
-#include "ConfigParser.hpp"
+#include "../Config/ConfigParser.hpp"
 #include <iostream>
+
+/// Parsing function ///////////////////////////////////////////////////////////////////////////////
 
 ConfigParser::ConfigParser(const std::string &path) 
 {
@@ -52,6 +54,18 @@ void ConfigParser::parseDirective(const std::string &line, ServerConfig &server)
 		if (tokens.size() != 2)
     	    throw std::runtime_error("Erreur : mauvais format pour client_max_body_size : " + line);
 		server.client_max_body_size = parseSize(tokens[1]);
+	}
+	else if (key == "error_page") {
+		if (tokens.size() != 3)
+			throw std::runtime_error("Erreur: format invalid pour error_page : error_page <code> <path>");
+		int code = ::atoi(tokens[1].c_str());
+		std::string path = tokens[2];
+
+		if (!path.empty() && path[path.size() - 1] == ';')
+			path.erase(path.size() - 1);
+		if (code < 400 || code > 599)
+			throw std::runtime_error("Erreur: code HTTP invalid -> error_page : " + tokens[1]);
+		server.error_pages[code] = path;
 	}
 	else 
 		std::cerr << "Directive inconnue dans server block : " << line << std::endl;
@@ -126,6 +140,7 @@ const std::vector<ServerConfig>& ConfigParser::getServers() const {
 	return this->servers;
 }
 
+/// Utils function /////////////////////////////////////////////////////////////////////////
 
 std::string ConfigParser::trim(const std::string &s) {
 	size_t start = s.find_first_not_of(" \t\r\n");
@@ -193,4 +208,55 @@ size_t ConfigParser::parseSize(const std::string &sizeStr) {
         throw std::runtime_error("Erreur : client_max_body_size trop petit (< 512 octets)");
 
     return num;
+}
+
+///// Validate function pour ServerConfig///////////////////////////////////////////////////////////////////////////////////////////
+
+void ConfigParser::validateServers() const {
+	std::set<int> usedPorts;
+
+	for (size_t i = 0; i < servers.size(); ++i){
+		const ServerConfig &server = servers[i];
+		
+		if (server.listen < 1 || server.listen > 65535)
+			throw std::runtime_error("Erreur: port invalide");
+		if (usedPorts.count(server.listen))
+			throw std::runtime_error("Erreur: port dupliqué");
+		usedPorts.insert(server.listen);
+
+		bool hasRootLocation = false;
+		for (size_t j = 0; j < server.locations.size(); ++j) {
+			if (server.locations[j].path == "/") {
+				hasRootLocation = true;
+				break;
+			}
+		}
+		if (!hasRootLocation)
+			throw std::runtime_error("Erreur: le serveur n'a pas de location /");
+		
+		for (std::map<int, std::string>::const_iterator it = server.error_pages.begin(); it != server.error_pages.end(); ++it) {
+			if (access(it->second.c_str(), F_OK) == -1)
+				throw std::runtime_error("Erreur: fichier error_page introuvable : " + it->second);
+		}
+
+		for (size_t j = 0; j < server.locations.size(); ++j) {
+			const LocationConfig &loc = server.locations[j];
+
+			for (size_t k = 0; k < loc.allow_methods.size(); ++k) {
+				const std::string &method = loc.allow_methods[k];
+				if (method != "GET" && method != "POST" && method != "DELETE")
+					throw std::runtime_error("Erreur: methode HTTP invalide : " + method + " dans location " + loc.path);
+			}
+
+			bool hasPost = false;
+			for (size_t k = 0; k < loc.allow_methods.size(); ++k) 
+				if (loc.allow_methods[k] == "POST")
+					hasPost = true;
+			if (hasPost && loc.upload_store.empty())
+				throw std::runtime_error("Erreur: POST sans upload_store defini dans : " + loc.path);
+			if (!loc.cgi_pass.empty() && access(loc.cgi_pass.c_str(), X_OK) == -1)
+				throw std::runtime_error("Erreur: cgi_pass invalide ou non executable : " + loc.cgi_pass);
+		}
+	}
+	
 }
