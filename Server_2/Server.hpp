@@ -13,8 +13,10 @@
 #include <string.h>
 #include <string>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 #include "../Request/RequestParser.hpp"
 #include "../Config/ConfigParser.hpp"
+#include "../Request/HttpStatusCodes.hpp"
 
 std::string extractMimeType(std::string& headerValue);
 
@@ -42,6 +44,9 @@ class Server
         type handle_request(RequestParser& req);
         ~Server();
         void run();
-};
+        const LocationConfig* matchLocation(const std::string &uri) const;
+        std::string makeErrorPage(int code) const;
+        bool isDirectory(const std::string &path);
+};      
 
 #endif

@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "../Request/RequestParser.hpp"
+#include "../Config/ConfigParser.hpp"
 std::string extractMimeType(std::string& headerValue);
 
 enum type {
@@ -29,7 +30,7 @@ class Server
         std::string response_html;
 
     public:
-        Server(int port);
+        Server(const ServerConfig &conf);
         type handle_request(RequestParser& req);
         ~Server();
         void run();

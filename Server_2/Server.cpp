@@ -135,70 +135,197 @@ std::string getMimeType(const std::string& path) {
 
 type Server::handle_request(RequestParser& req)
 {
-    if (req.getMethod() == "GET")
-    {
-        std::string uri = req.getUri();
-        if (uri == "/")
-            uri = "/index.html";  // page par défaut
+    if (req.getMethod() != "GET")
+        return POST;
 
-        std::string path = "www" + uri;
+    std::string uri = req.getUri();
+    if (uri.empty())
+        uri = "/";
 
-        std::ifstream file(path.c_str(), std::ios::binary);
-        if (!file.is_open())
-        {
-            // fichier non trouvé : envoyer une 404 simple
-            std::string not_found_response = 
-                "HTTP/1.1 404 Not Found\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: 13\r\n"
-                "\r\n"
-                "404 Not Found\n";
-            response_html = not_found_response;
-            return GET;
-        }
-
-        // lire le fichier en binaire
-        std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        file.close();
-
-        std::string mime_type = getMimeType(path);
-
-        std::stringstream header;
-        header << "HTTP/1.1 200 OK\r\n";
-        header << "Content-Type: " << mime_type << "\r\n";
-        header << "Content-Length: " << buffer.size() << "\r\n";
-        header << "\r\n";
-
-        response_html = header.str();
-
-        // maintenant il faut envoyer la réponse complète (header + contenu binaire)
-        // mais ici dans run() tu envoies directement response_html (string) => il faut modifier run() pour envoyer aussi les données binaires
-
-        // Pour simplifier, on va stocker aussi le contenu binaire dans un membre de Server, par ex std::vector<char> response_body;
-        response_body = buffer; // ajoute ce membre dans ta classe Server
-
+    // Match la location la plus adaptée
+    const LocationConfig* loc = matchLocation(uri);
+    if (!loc) {
+        response_html = makeErrorPage(404);
         return GET;
     }
-    else
-    {
-        return POST;
+
+    // Construction du chemin absolu à partir du root de la location
+    std::string relative_path = uri.substr(loc->path.length());
+    std::string file_path = loc->root;
+    if (!relative_path.empty() && relative_path[0] != '/')
+        file_path += '/';
+    file_path += relative_path;
+
+    // Si c’est un dossier ou qu’il finit par '/', on ajoute index
+    struct stat sb;
+    if (stat(file_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+        if (loc->index.empty()) {
+            response_html = makeErrorPage(403); // pas de fichier index et directory_listing désactivé
+            return GET;
+        }
+        if (file_path[file_path.size() - 1] != '/')
+            file_path += '/';
+        file_path += loc->index;
     }
+    std::cout << "[DEBUG] URI: " << uri << std::endl;
+    std::cout << "[DEBUG] Location matched: " << loc->path << std::endl;
+    std::cout << "[DEBUG] Root: " << loc->root << std::endl;
+    std::cout << "[DEBUG] File path final: " << file_path << std::endl;
+
+
+    // Lire le fichier cible
+    std::ifstream file(file_path.c_str(), std::ios::binary);
+    if (!file.is_open()) {
+        response_html = makeErrorPage(404);
+        return GET;
+    }
+
+    std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+
+    std::string mime = getMimeType(file_path);
+    std::cout << "[DEBUG] MIME type: " << mime << std::endl;
+    std::ostringstream header;
+    header << "HTTP/1.1 200 OK\r\n";
+    header << "Content-Type: " << mime << "\r\n";
+    header << "Content-Length: " << buffer.size() << "\r\n";
+    header << "\r\n";
+
+    response_html = header.str();
+    response_body = buffer;
+    return GET;
 }
 
-int main()
+// type Server::handle_request(RequestParser& req)
+// {
+//     if (req.getMethod() == "GET")
+//     {
+//         std::string uri = req.getUri();
+//         if (uri == "/")
+//             uri = "/index.html";  // page par défaut
+
+//         std::string path = "www" + uri;
+
+//         std::ifstream file(path.c_str(), std::ios::binary);
+//         if (!file.is_open())
+//         {
+//             // fichier non trouvé : envoyer une 404 simple
+//             std::string not_found_response = 
+//                 "HTTP/1.1 404 Not Found\r\n"
+//                 "Content-Type: text/html\r\n"
+//                 "Content-Length: 13\r\n"
+//                 "\r\n"
+//                 "404 Not Found\n";
+//             response_html = not_found_response;
+//             return GET;
+//         }
+
+//         // lire le fichier en binaire
+//         std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+//         file.close();
+
+//         std::string mime_type = getMimeType(path);
+
+//         std::stringstream header;
+//         header << "HTTP/1.1 200 OK\r\n";
+//         header << "Content-Type: " << mime_type << "\r\n";
+//         header << "Content-Length: " << buffer.size() << "\r\n";
+//         header << "\r\n";
+
+//         response_html = header.str();
+
+//         // maintenant il faut envoyer la réponse complète (header + contenu binaire)
+//         // mais ici dans run() tu envoies directement response_html (string) => il faut modifier run() pour envoyer aussi les données binaires
+
+//         // Pour simplifier, on va stocker aussi le contenu binaire dans un membre de Server, par ex std::vector<char> response_body;
+//         response_body = buffer; // ajoute ce membre dans ta classe Server
+
+//         return GET;
+//     }
+//     else
+//     {
+//         return POST;
+//     }
+// }
+
+
+
+const LocationConfig* Server::matchLocation(const std::string& uri) const
 {
-    ConfigParser parser("config.conf");
-    parser.validateServers();
-    const std::vector<ServerConfig> &servers = parser.getServers();
-    std::cout << "Nombre de serveurs parsés : " << servers.size() << std::endl;
+    const LocationConfig* best_match = NULL;
+    size_t best_length = 0;
 
-    std::vector<Server*> serverInstances;
-    for (size_t i = 0; i < servers.size(); ++i)
-        serverInstances.push_back(new Server(servers[i]));
+    for (size_t i = 0; i < config.locations.size(); ++i) {
+        const LocationConfig& loc = config.locations[i];
+        const std::string& path = loc.path;
 
-    for (size_t i = 0; i < serverInstances.size(); ++i)
-        serverInstances[i]->run();
+        if (uri.compare(0, path.size(), path) == 0 && 
+            (uri.size() == path.size() || uri[path.size()] == '/' || path[path.size() - 1] == '/')) {
+            if (path.size() > best_length) {
+                best_match = &loc;
+                best_length = path.size();
+            }
+        }
+    }
 
-    for (size_t i = 0; i < serverInstances.size(); ++i)
-        delete serverInstances[i];
+    return best_match;
 }
+
+bool Server::isDirectory(const std::string &path) {
+    struct stat statbuf;
+
+    if (stat(path.c_str(), &statbuf) != 0)
+        return false;
+    return S_ISDIR(statbuf.st_mode);
+}
+
+std::string Server::makeErrorPage(int code) const {
+    std::string body;
+    std::string filepath;
+
+    std::map<int, std::string>::const_iterator it = config.error_pages.find(code);
+    if (it != config.error_pages.end()) {
+        filepath = it->second;
+        std::ifstream file(filepath.c_str(), std::ios::binary);
+        if (file.is_open()) {
+            std::ostringstream ss;
+            ss << file.rdbuf();
+            body = ss.str();
+            file.close();
+        }
+    }
+
+    if (body.empty()) {
+        std::ostringstream ss;
+        ss << "<html><head><title>" << code << " Error</title></head>"
+           << "<body><h1>" << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "</h1></body></html>";
+        body = ss.str();
+    }
+
+    std::ostringstream header;
+    header << "HTTP/1.1 " << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "\r\n";
+    header << "Content-Type: text/html\r\n";
+    header << "Content-Length: " << body.size() << "\r\n";
+    header << "\r\n";
+    header << body;
+
+    return header.str();
+}
+
+// int main()
+// {
+//     ConfigParser parser("config.conf");
+//     parser.validateServers();
+//     const std::vector<ServerConfig> &servers = parser.getServers();
+//     std::cout << "Nombre de serveurs parsés : " << servers.size() << std::endl;
+
+//     std::vector<Server*> serverInstances;
+//     for (size_t i = 0; i < servers.size(); ++i)
+//         serverInstances.push_back(new Server(servers[i]));
+
+//     for (size_t i = 0; i < serverInstances.size(); ++i)
+//         serverInstances[i]->run();
+
+//     for (size_t i = 0; i < serverInstances.size(); ++i)
+//         delete serverInstances[i];
+// }
