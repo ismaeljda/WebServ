@@ -247,9 +247,16 @@ void Server::handle_post(RequestParser& req) {
         response_html = makeErrorPage(404);
         return;
     }
+    std::cout << "[POST] URI reçue : " << req.getUri() << std::endl;
 
     std::string body = req.getBody(); // récupère le body parsé
-    std::string target_path = loc->root + "/upload_result.txt";
+    std::string target_path;
+    if (!loc->upload_store.empty())
+        target_path = loc->upload_store + "/upload_result.txt";
+    else
+        target_path = loc->root + "/upload_result.txt";
+    std::cout << "loc->uploadstore = " << loc->upload_store << std::endl;
+    std::cout << "[POST] File will be saved to: " << target_path << std::endl;
 
     std::ofstream out(target_path.c_str(), std::ios::app);
     if (!out.is_open()) {
@@ -268,6 +275,11 @@ void Server::handle_post(RequestParser& req) {
     header << "\r\n";
 
     response_html = header.str() + response_body;
+    std::cout << "[DEBUG] URI: " << req.getUri() << std::endl;
+    std::cout << "[DEBUG] Location matched: " << loc->path << std::endl;
+    std::cout << "[DEBUG] Root: " << loc->root << std::endl;    
+    std::cout << "[DEBUG] UploadStore: " << loc->upload_store << std::endl;
+
 }
 
 type Server::handle_request(RequestParser& req)
