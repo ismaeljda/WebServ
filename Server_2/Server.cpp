@@ -157,7 +157,7 @@ void Server::handleClient(int fd) {
     RequestParser request;
     request.parse(req);
 
-    if (handle_request(request) == GET) {
+    if (handle_request(request) == GET || handle_request(request) == POST) {
         send(fd, response_html.c_str(), response_html.size(), 0);
         if (!response_body.empty()){
             send(fd, &response_body[0], response_body.size(), 0);
@@ -185,12 +185,8 @@ std::string getMimeType(const std::string& path) {
     else
         return "application/octet-stream"; // par défaut
 }
-
-type Server::handle_request(RequestParser& req)
+void Server::handle_get(RequestParser& req)
 {
-    if (req.getMethod() != "GET")
-        return POST;
-
     std::string uri = req.getUri();
     if (uri.empty())
         uri = "/";
@@ -199,7 +195,6 @@ type Server::handle_request(RequestParser& req)
     const LocationConfig* loc = matchLocation(uri);
     if (!loc) {
         response_html = makeErrorPage(404);
-        return GET;
     }
 
     // Construction du chemin absolu à partir du root de la location
@@ -214,7 +209,6 @@ type Server::handle_request(RequestParser& req)
     if (stat(file_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
         if (loc->index.empty()) {
             response_html = makeErrorPage(403); // pas de fichier index et directory_listing désactivé
-            return GET;
         }
         if (file_path[file_path.size() - 1] != '/')
             file_path += '/';
@@ -230,7 +224,6 @@ type Server::handle_request(RequestParser& req)
     std::ifstream file(file_path.c_str(), std::ios::binary);
     if (!file.is_open()) {
         response_html = makeErrorPage(404);
-        return GET;
     }
 
     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -246,7 +239,51 @@ type Server::handle_request(RequestParser& req)
 
     response_html = header.str();
     response_body = buffer;
-    return GET;
+}
+
+void Server::handle_post(RequestParser& req) {
+    const LocationConfig* loc = matchLocation(req.getUri());
+    if (!loc) {
+        response_html = makeErrorPage(404);
+        return;
+    }
+
+    std::string body = req.getBody(); // récupère le body parsé
+    std::string target_path = loc->root + "/upload_result.txt";
+
+    std::ofstream out(target_path.c_str(), std::ios::app);
+    if (!out.is_open()) {
+        response_html = makeErrorPage(500);
+        return;
+    }
+
+    out << body << "\n";
+    out.close();
+
+    std::string response_body = "<html><body>POST received and saved.</body></html>";
+    std::ostringstream header;
+    header << "HTTP/1.1 200 OK\r\n";
+    header << "Content-Type: text/html\r\n";
+    header << "Content-Length: " << response_body.size() << "\r\n";
+    header << "\r\n";
+
+    response_html = header.str() + response_body;
+}
+
+type Server::handle_request(RequestParser& req)
+{
+    if (req.getMethod() == "GET")
+    {
+        handle_get(req);
+        return GET;
+    }
+    if (req.getMethod() == "POST")
+    {
+        handle_post(req);
+        return POST;
+    }
+    return NONE;
+
 }
 
 const LocationConfig* Server::matchLocation(const std::string& uri) const
@@ -310,21 +347,3 @@ std::string Server::makeErrorPage(int code) const {
 
     return header.str();
 }
-
-// int main()
-// {
-//     ConfigParser parser("config.conf");
-//     parser.validateServers();
-//     const std::vector<ServerConfig> &servers = parser.getServers();
-//     std::cout << "Nombre de serveurs parsés : " << servers.size() << std::endl;
-
-//     std::vector<Server*> serverInstances;
-//     for (size_t i = 0; i < servers.size(); ++i)
-//         serverInstances.push_back(new Server(servers[i]));
-
-//     for (size_t i = 0; i < serverInstances.size(); ++i)
-//         serverInstances[i]->run();
-
-//     for (size_t i = 0; i < serverInstances.size(); ++i)
-//         delete serverInstances[i];
-// }

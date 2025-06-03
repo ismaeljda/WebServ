@@ -61,6 +61,25 @@
             </div>
         </div>
     </section>
+    <section class="upload-section">
+        <h3>Partagez Votre Recette</h3>
+        <p>Envie de partager une saveur malgache ou française ? Remplissez le formulaire ci-dessous :</p>
+        <form action="/cgi-bin/upload_recette.py" method="post" enctype="multipart/form-data" style="position: fixed; bottom: 0; width: 100%; background: #f8f9fa; padding: 10px; border-top: 1px solid #ccc;">
+            <label for="titre">Titre de la recette :</label>
+            <input type="text" id="titre" name="titre" required>
+
+            <label for="auteur">Auteur :</label>
+            <input type="text" id="auteur" name="auteur" required>
+
+            <label for="recette">Recette :</label>
+            <textarea id="recette" name="recette" rows="4" required></textarea>
+
+            <label for="image">Image (optionnel) :</label>
+            <input type="file" id="image" name="image" accept="image/*">
+
+            <button type="submit">Envoyer la recette</button>
+        </form>
+    </section>
 
     <footer>
         <div class="footer-content">
