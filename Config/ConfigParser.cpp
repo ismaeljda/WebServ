@@ -68,7 +68,7 @@ void ConfigParser::parseDirective(const std::string &line, ServerConfig &server)
 		server.error_pages[code] = path;
 	}
 	else 
-		std::cerr << "Directive inconnue dans server block : " << line << std::endl;
+		throw std::runtime_error("Directive inconnue dans server block : " + line );
 }
 
 void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server) {
@@ -219,9 +219,9 @@ void ConfigParser::validateServers() const {
 		const ServerConfig &server = servers[i];
 		
 		if (server.listen < 1 || server.listen > 65535)
-			throw std::runtime_error("Erreur: port invalide");
+			throw std::runtime_error("port invalide");
 		if (usedPorts.count(server.listen))
-			throw std::runtime_error("Erreur: port dupliqué");
+			throw std::runtime_error("port dupliqué");
 		usedPorts.insert(server.listen);
 
 		bool hasRootLocation = false;

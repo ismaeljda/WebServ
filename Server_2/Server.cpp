@@ -20,7 +20,7 @@ Server::Server(const ServerConfig &conf) : config(conf){
 	exit(EXIT_FAILURE);
     }
     std::cout << "bind OK" << std::endl;
-    if (listen(server_fd, 10) < 0) {
+    if (listen(server_fd, 30) < 0) {
 	perror("listen");
 	exit(EXIT_FAILURE);
     }
@@ -195,60 +195,6 @@ type Server::handle_request(RequestParser& req)
     response_body = buffer;
     return GET;
 }
-
-// type Server::handle_request(RequestParser& req)
-// {
-//     if (req.getMethod() == "GET")
-//     {
-//         std::string uri = req.getUri();
-//         if (uri == "/")
-//             uri = "/index.html";  // page par défaut
-
-//         std::string path = "www" + uri;
-
-//         std::ifstream file(path.c_str(), std::ios::binary);
-//         if (!file.is_open())
-//         {
-//             // fichier non trouvé : envoyer une 404 simple
-//             std::string not_found_response = 
-//                 "HTTP/1.1 404 Not Found\r\n"
-//                 "Content-Type: text/html\r\n"
-//                 "Content-Length: 13\r\n"
-//                 "\r\n"
-//                 "404 Not Found\n";
-//             response_html = not_found_response;
-//             return GET;
-//         }
-
-//         // lire le fichier en binaire
-//         std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-//         file.close();
-
-//         std::string mime_type = getMimeType(path);
-
-//         std::stringstream header;
-//         header << "HTTP/1.1 200 OK\r\n";
-//         header << "Content-Type: " << mime_type << "\r\n";
-//         header << "Content-Length: " << buffer.size() << "\r\n";
-//         header << "\r\n";
-
-//         response_html = header.str();
-
-//         // maintenant il faut envoyer la réponse complète (header + contenu binaire)
-//         // mais ici dans run() tu envoies directement response_html (string) => il faut modifier run() pour envoyer aussi les données binaires
-
-//         // Pour simplifier, on va stocker aussi le contenu binaire dans un membre de Server, par ex std::vector<char> response_body;
-//         response_body = buffer; // ajoute ce membre dans ta classe Server
-
-//         return GET;
-//     }
-//     else
-//     {
-//         return POST;
-//     }
-// }
-
-
 
 const LocationConfig* Server::matchLocation(const std::string& uri) const
 {

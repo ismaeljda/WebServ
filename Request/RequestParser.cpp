@@ -34,43 +34,6 @@ bool RequestParser::isvalidHeader(const std::map<std::string, std::string> heade
 
 bool RequestParser::parse(std::string& str) 
 {
-    // size_t header_end = str.find("\r\n\r\n");
-    // if (header_end == std::string::npos)
-    //     return false;
-    
-    // std::string header_part = str.substr(0, header_end);
-    
-    // //lire la first ligne et prendre la methode, l'uri et la version
-    // std::string first_line;
-    // std::istringstream stream(header_part);
-    // std::getline(stream, first_line);
-    
-    // std::istringstream line_stream(first_line);
-    // line_stream >> method >> uri >> version;
-    // parseQueryParams(uri);
-    // if (!RequestParser::isvalidMethod(method)) 
-    // {
-    //     std::cerr << "Error: unsupported HTTP method: " << method << std::endl;
-    //     return false; // Faudra set un code d'erreur ici
-    // }
-    // if (!RequestParser::isvalidVersion(version)) 
-    // {
-    //     std::cerr << "Error: not an HTTP version supported: " << version << std::endl;
-    //     return false; // Faudra set un code d'erreur ici
-    // }
-    // //Check de l'uri en fonction de nos fichiers et dossier + format et retourner code erreur
-
-    // //S'occuper des headers et les stockers dans std::map
-    // std::string line;
-    // while(std::getline(stream, line))
-    // {
-    //     size_t colon = line.find(":");
-    //     std::string key = line.substr(0, colon);
-    //     std::string value = line.substr(colon + 1);
-    //     key = trim(key);
-    //     value = trim(value);
-    //     headers[key] = value;
-    // }
     size_t header_end = str.find("\r\n\r\n");
     if (header_end == std::string::npos)
         return false;
