@@ -43,10 +43,16 @@ class Server
         Server(const ServerConfig &conf);
         type handle_request(RequestParser& req);
         ~Server();
-        void run();
+        // void run();
+        void acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server);
+        void handleClient(int fd);
+
         const LocationConfig* matchLocation(const std::string &uri) const;
         std::string makeErrorPage(int code) const;
         bool isDirectory(const std::string &path);
+
+        int getServerfd() const;
+        int getPort() const;
 };      
 
 #endif

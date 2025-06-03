@@ -38,80 +38,133 @@ Server::~Server()
     close(server_fd);
 }
 
-void Server::run()
-{
-    std::cout << "Le serveur entre dans run() sur le port : " << config.listen << std::endl;
-    std::cout << "fds[0].fd = " << fds[0].fd << ", attendu : " << server_fd << std::endl;
+int Server::getServerfd() const {
+    return server_fd;
+}
 
-    while (true)
-    {
-        int ret = poll(&fds[0], fds.size(), -1);
-        if (ret < 0)
-        {
-            std::cerr << "poll failed" << std::endl;
-            break;
-        }
-        for (size_t i = 0; i < fds.size() ; ++i)
-        {
-            if (fds[i].revents & POLLIN) // si il y a qqch qui s est passe sur la socket et que y a qqch a lire sur la socket(POLLIN)
-            {
-                if (fds[i].fd == server_fd) // si le socket qui a hit c'est celle du server c est qu'il y a une nouvelle connection
-                {
-                    //On creer la socket du client
-                    sockaddr_in clientAddr;
-                    socklen_t addrlen = sizeof(clientAddr);
-                    int client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &addrlen);
-                    if (client_fd < 0) 
-                    {
-                        std::cout << "Failed to grab connection" << std::endl;
-                        continue;
-                    }
-                    std::cout << "New client connected: FD = " << client_fd << std::endl;
-                    // On ajoute la socket client au tableau de poll
-                    pollfd client_pollfd;
-                    client_pollfd.fd = client_fd;
-                    client_pollfd.events = POLLIN;
-                    client_pollfd.revents = 0;
-                    fds.push_back(client_pollfd);
-                }
-                else
-                {
-                    char buffer[1024];
-                    memset(buffer, 0, sizeof(buffer));
-                    int bytesRead = read(fds[i].fd, buffer, sizeof(buffer));
-                    if (bytesRead <= 0)
-                    {
-                        std::cout << "Client disconnected: FD = " << fds[i].fd << std::endl;
-                        close(fds[i].fd);
-                        fds.erase(fds.begin() + i);
-                        --i;
-                    }
-                    else
-                    {
-                        std::cout << "Message from client: " << buffer;
-                        RequestParser request;
-                        std::string req = buffer;
-                        request.parse(req);
-                        // request.display_request();
-                        if(handle_request(request) == GET)
-                        {
-                            // envoi header
-                            send(fds[i].fd, response_html.c_str(), response_html.size(), 0);
-                            // envoi corps binaire
-                            if (!response_body.empty())
-                            {
-                                send(fds[i].fd, &response_body[0], response_body.size(), 0);
-                                response_body.clear();
-                            }
-                        }
-                        close(fds[i].fd);
-                        fds.erase(fds.begin() + i);
-                        --i;
-                    }
-                }
-            }
+int Server::getPort() const {
+    return config.listen;
+}
+// void Server::run()
+// {
+//     std::cout << "Le serveur entre dans run() sur le port : " << config.listen << std::endl;
+//     std::cout << "fds[0].fd = " << fds[0].fd << ", attendu : " << server_fd << std::endl;
+
+//     while (true)
+//     {
+//         int ret = poll(&fds[0], fds.size(), -1);
+//         if (ret < 0)
+//         {
+//             std::cerr << "poll failed" << std::endl;
+//             break;
+//         }
+//         for (size_t i = 0; i < fds.size() ; ++i)
+//         {
+//             if (fds[i].revents & POLLIN) // si il y a qqch qui s est passe sur la socket et que y a qqch a lire sur la socket(POLLIN)
+//             {
+//                 if (fds[i].fd == server_fd) // si le socket qui a hit c'est celle du server c est qu'il y a une nouvelle connection
+//                 {
+//                     //On creer la socket du client
+//                     sockaddr_in clientAddr;
+//                     socklen_t addrlen = sizeof(clientAddr);
+//                     int client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &addrlen);
+//                     if (client_fd < 0) 
+//                     {
+//                         std::cout << "Failed to grab connection" << std::endl;
+//                         continue;
+//                     }
+//                     std::cout << "New client connected: FD = " << client_fd << std::endl;
+//                     // On ajoute la socket client au tableau de poll
+//                     pollfd client_pollfd;
+//                     client_pollfd.fd = client_fd;
+//                     client_pollfd.events = POLLIN;
+//                     client_pollfd.revents = 0;
+//                     fds.push_back(client_pollfd);
+//                 }
+//                 else
+//                 {
+//                     char buffer[1024];
+//                     memset(buffer, 0, sizeof(buffer));
+//                     int bytesRead = read(fds[i].fd, buffer, sizeof(buffer));
+//                     if (bytesRead <= 0)
+//                     {
+//                         std::cout << "Client disconnected: FD = " << fds[i].fd << std::endl;
+//                         close(fds[i].fd);
+//                         fds.erase(fds.begin() + i);
+//                         --i;
+//                     }
+//                     else
+//                     {
+//                         std::cout << "Message from client: " << buffer;
+//                         RequestParser request;
+//                         std::string req = buffer;
+//                         request.parse(req);
+//                         // request.display_request();
+//                         if(handle_request(request) == GET)
+//                         {
+//                             // envoi header
+//                             send(fds[i].fd, response_html.c_str(), response_html.size(), 0);
+//                             // envoi corps binaire
+//                             if (!response_body.empty())
+//                             {
+//                                 send(fds[i].fd, &response_body[0], response_body.size(), 0);
+//                                 response_body.clear();
+//                             }
+//                         }
+//                         close(fds[i].fd);
+//                         fds.erase(fds.begin() + i);
+//                         --i;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
+
+void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server) {
+    sockaddr_in clientAddr;
+    socklen_t addrlen = sizeof(clientAddr);
+    int client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &addrlen);
+
+    if (client_fd < 0) {
+        std::cerr << "Erreur: accept() a echoue sur le port : " << config.listen << std::endl;
+        return; 
+    }
+    std::cout << "✅ Nouveau client connecté sur le port " << config.listen
+	          << " (FD = " << client_fd << ")" << std::endl;
+    pollfd client_pollfd;
+    client_pollfd.fd = client_fd;
+    client_pollfd.events = POLLIN;
+    client_pollfd.revents = 0;
+    fds.push_back(client_pollfd);
+
+    client_to_server[client_fd] = this;
+}
+
+void Server::handleClient(int fd) {
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
+    ssize_t bytesRead = read(fd, buffer, sizeof(buffer) - 1);
+
+    if (bytesRead <= 0) {
+        std::cout << "Deconnexion client FD " << fd << std::endl;
+        close(fd);
+        return;
+    }
+
+    std::cout << "Requête reçue (FD " << fd << ") :\n" << buffer << std::endl;
+    std::string req(buffer);
+    RequestParser request;
+    request.parse(req);
+
+    if (handle_request(request) == GET) {
+        send(fd, response_html.c_str(), response_html.size(), 0);
+        if (!response_body.empty()){
+            send(fd, &response_body[0], response_body.size(), 0);
+            response_body.clear();
         }
     }
+    close(fd);
 }
 
 std::string getMimeType(const std::string& path) {
