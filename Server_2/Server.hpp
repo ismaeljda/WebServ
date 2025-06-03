@@ -14,6 +14,7 @@
 #include <string>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include "../Request/RequestParser.hpp"
 #include "../Config/ConfigParser.hpp"
 #include "../Request/HttpStatusCodes.hpp"
@@ -21,9 +22,10 @@
 std::string extractMimeType(std::string& headerValue);
 
 enum type {
-    GET = 0,          
-    POST = 1,            
-    DELETE = 2     
+    GET = 1,          
+    POST = 2,            
+    DELETE = 3,
+    NONE =  0  
 }; 
 
 class Server
@@ -42,6 +44,8 @@ class Server
     public:
         Server(const ServerConfig &conf);
         type handle_request(RequestParser& req);
+        void handle_get(RequestParser& req);
+        void handle_post(RequestParser& req);
         ~Server();
         void run();
         const LocationConfig* matchLocation(const std::string &uri) const;
