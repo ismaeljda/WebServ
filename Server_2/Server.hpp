@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <algorithm>
 #include "../Request/RequestParser.hpp"
 #include "../Config/ConfigParser.hpp"
 #include "../Request/HttpStatusCodes.hpp"
@@ -43,9 +44,10 @@ class Server
         Server &operator=(const Server &copy);
     public:
         Server(const ServerConfig &conf);
-        type handle_request(RequestParser& req);
-        void handle_get(RequestParser& req);
-        void handle_post(RequestParser& req);
+        type handle_request(RequestParser &req);
+        void handle_get(RequestParser &req);
+        void handle_post(RequestParser &req);
+        void handle_delete(RequestParser &req);
         ~Server();
         // void run();
         void acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server);

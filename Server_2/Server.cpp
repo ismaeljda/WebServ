@@ -45,81 +45,6 @@ int Server::getServerfd() const {
 int Server::getPort() const {
     return config.listen;
 }
-// void Server::run()
-// {
-//     std::cout << "Le serveur entre dans run() sur le port : " << config.listen << std::endl;
-//     std::cout << "fds[0].fd = " << fds[0].fd << ", attendu : " << server_fd << std::endl;
-
-//     while (true)
-//     {
-//         int ret = poll(&fds[0], fds.size(), -1);
-//         if (ret < 0)
-//         {
-//             std::cerr << "poll failed" << std::endl;
-//             break;
-//         }
-//         for (size_t i = 0; i < fds.size() ; ++i)
-//         {
-//             if (fds[i].revents & POLLIN) // si il y a qqch qui s est passe sur la socket et que y a qqch a lire sur la socket(POLLIN)
-//             {
-//                 if (fds[i].fd == server_fd) // si le socket qui a hit c'est celle du server c est qu'il y a une nouvelle connection
-//                 {
-//                     //On creer la socket du client
-//                     sockaddr_in clientAddr;
-//                     socklen_t addrlen = sizeof(clientAddr);
-//                     int client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &addrlen);
-//                     if (client_fd < 0) 
-//                     {
-//                         std::cout << "Failed to grab connection" << std::endl;
-//                         continue;
-//                     }
-//                     std::cout << "New client connected: FD = " << client_fd << std::endl;
-//                     // On ajoute la socket client au tableau de poll
-//                     pollfd client_pollfd;
-//                     client_pollfd.fd = client_fd;
-//                     client_pollfd.events = POLLIN;
-//                     client_pollfd.revents = 0;
-//                     fds.push_back(client_pollfd);
-//                 }
-//                 else
-//                 {
-//                     char buffer[1024];
-//                     memset(buffer, 0, sizeof(buffer));
-//                     int bytesRead = read(fds[i].fd, buffer, sizeof(buffer));
-//                     if (bytesRead <= 0)
-//                     {
-//                         std::cout << "Client disconnected: FD = " << fds[i].fd << std::endl;
-//                         close(fds[i].fd);
-//                         fds.erase(fds.begin() + i);
-//                         --i;
-//                     }
-//                     else
-//                     {
-//                         std::cout << "Message from client: " << buffer;
-//                         RequestParser request;
-//                         std::string req = buffer;
-//                         request.parse(req);
-//                         // request.display_request();
-//                         if(handle_request(request) == GET)
-//                         {
-//                             // envoi header
-//                             send(fds[i].fd, response_html.c_str(), response_html.size(), 0);
-//                             // envoi corps binaire
-//                             if (!response_body.empty())
-//                             {
-//                                 send(fds[i].fd, &response_body[0], response_body.size(), 0);
-//                                 response_body.clear();
-//                             }
-//                         }
-//                         close(fds[i].fd);
-//                         fds.erase(fds.begin() + i);
-//                         --i;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
 
 void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server) {
     sockaddr_in clientAddr;
@@ -157,7 +82,8 @@ void Server::handleClient(int fd) {
     RequestParser request;
     request.parse(req);
 
-    if (handle_request(request) == GET || handle_request(request) == POST) {
+    type result = handle_request(request);
+    if (result == GET || result == POST || result == DELETE || result == NONE) {
         send(fd, response_html.c_str(), response_html.size(), 0);
         if (!response_body.empty()){
             send(fd, &response_body[0], response_body.size(), 0);
@@ -185,7 +111,7 @@ std::string getMimeType(const std::string& path) {
     else
         return "application/octet-stream"; // par défaut
 }
-void Server::handle_get(RequestParser& req)
+void Server::handle_get(RequestParser &req)
 {
     std::string uri = req.getUri();
     if (uri.empty())
@@ -195,6 +121,17 @@ void Server::handle_get(RequestParser& req)
     const LocationConfig* loc = matchLocation(uri);
     if (!loc) {
         response_html = makeErrorPage(404);
+        return;
+    }
+    std::cout << "[REDIRECT] Vers : " << loc->redirect << std::endl;
+    if (!loc->redirect.empty()) {
+        std::ostringstream header;
+        header << "HTTP/1.1 301 Moved Permanently\r\n";
+        header << "Location: " << loc->redirect << "\r\n";
+        header << "Content Length: 0\r\n";
+        header << "\r\n";
+        response_html = header.str();
+        return;
     }
 
     // Construction du chemin absolu à partir du root de la location
@@ -224,6 +161,7 @@ void Server::handle_get(RequestParser& req)
     std::ifstream file(file_path.c_str(), std::ios::binary);
     if (!file.is_open()) {
         response_html = makeErrorPage(404);
+        return;
     }
 
     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -241,7 +179,7 @@ void Server::handle_get(RequestParser& req)
     response_body = buffer;
 }
 
-void Server::handle_post(RequestParser& req) {
+void Server::handle_post(RequestParser &req) {
     const LocationConfig* loc = matchLocation(req.getUri());
     if (!loc) {
         response_html = makeErrorPage(404);
@@ -282,8 +220,65 @@ void Server::handle_post(RequestParser& req) {
 
 }
 
-type Server::handle_request(RequestParser& req)
+void Server::handle_delete(RequestParser &req) {
+    const LocationConfig *loc = matchLocation(req.getUri());
+    if (!loc) {
+        response_html = makeErrorPage(404);
+        return;
+    }
+
+    std::string uri = req.getUri();
+    std::string relative_path = uri.substr(loc->path.length());
+    std::string file_path = loc->root;
+    if (!relative_path.empty() && relative_path[0] != '/')
+        file_path += '/';
+    file_path += relative_path;
+
+    std::cout << "DELETE target file -> " << file_path << std::endl;
+
+    if (access(file_path.c_str(), F_OK) == -1) {
+        response_html = makeErrorPage(404);
+        return;
+    }
+    if (remove(file_path.c_str()) == 0) {
+        std::string body = "<html><body><h1>File deleted successfully.</h1></body></html>";
+        std::ostringstream header;
+        header << "HTTP/1.1 200 ok\r\n";
+        header << "Content-Type: text/html\r\n";
+        header << "Content-Length: " << body.size() << "\r\n";
+        header << "\r\n";
+        
+        response_html = header.str() + body; 
+    } else {
+        response_html = makeErrorPage(403);
+    }
+}
+
+type Server::handle_request(RequestParser &req)
 {
+    const LocationConfig *loc = matchLocation(req.getUri());
+    if (!loc) {
+        response_html = makeErrorPage(404);
+        return NONE;
+    }
+
+    std::vector<std::string>::const_iterator it = std::find(loc->allow_methods.begin(), loc->allow_methods.end(), req.getMethod());
+    if (it == loc->allow_methods.end()) {
+        std::ostringstream oss;
+        std::string body = "<html><body><h1>405 Method Not Allowed</h1></body></html>";
+        oss << "HTTP/1.1 405 Method Not Allowed\r\n";
+        oss << "Content-Type: text/html\r\n";
+        oss << "Content-Length: " << body.size() << "\r\n";
+        oss << "Allow: ";
+        for (size_t i = 0; i < loc->allow_methods.size(); ++i) {
+            oss << loc->allow_methods[i];
+            if (i + 1 < loc->allow_methods.size())
+                oss << ", ";
+        }
+        oss << "\r\n\r\n" << body;
+        response_html = oss.str();
+        return NONE;
+    }
     if (req.getMethod() == "GET")
     {
         handle_get(req);
@@ -293,6 +288,10 @@ type Server::handle_request(RequestParser& req)
     {
         handle_post(req);
         return POST;
+    }
+    if (req.getMethod() == "DELETE"){
+        handle_delete(req);
+        return DELETE;
     }
     return NONE;
 

@@ -76,3 +76,16 @@ Content-Disposition: form-data; name="recette"
 
 ttttt
 ------geckoformbound
+------geckoformboundary6202c090b998ae314435d5354a7c7457
+Content-Disposition: form-data; name="titre"
+
+aaaa
+------geckoformboundary6202c090b998ae314435d5354a7c7457
+Content-Disposition: form-data; name="auteur"
+
+aaaa
+------geckoformboundary6202c090b998ae314435d5354a7c7457
+Content-Disposition: form-data; name="recette"
+
+aaaa
+------geckoformboundar
