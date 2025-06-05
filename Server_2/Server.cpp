@@ -8,7 +8,6 @@ Server::Server(const ServerConfig &conf) : config(conf){
     sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    std::cout << "le port config.listen est " << conf.listen << std::endl;
     addr.sin_port = htons(conf.listen);
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
@@ -19,14 +18,10 @@ Server::Server(const ServerConfig &conf) : config(conf){
 	perror("bind");
 	exit(EXIT_FAILURE);
     }
-    std::cout << "bind OK" << std::endl;
     if (listen(server_fd, 30) < 0) {
 	perror("listen");
 	exit(EXIT_FAILURE);
     }
-    std::cout << "listen OK" << std::endl;
-    std::cout << "Server lancé sur le port : " << conf.listen << std::endl;
-
     server_pollfd.fd = server_fd;
     server_pollfd.events = POLLIN;
     server_pollfd.revents = 0;
@@ -67,25 +62,67 @@ void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &clie
 }
 
 void Server::handleClient(int fd) {
-    char buffer[1024];
-    memset(buffer, 0, sizeof(buffer));
-    ssize_t bytesRead = read(fd, buffer, sizeof(buffer) - 1);
+    std::string requestStr;
+    char buffer[4096];
+    ssize_t bytesRead;
+    size_t total_read = 0;
+    size_t content_length = 0;
+    bool headerParsed = false;
 
-    if (bytesRead <= 0) {
-        std::cout << "Deconnexion client FD " << fd << std::endl;
+    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
+        requestStr.append(buffer, bytesRead);
+        total_read += bytesRead;
+
+        if (!headerParsed) {
+            size_t headerEnd = requestStr.find("\r\n\r\n");
+            if (headerEnd != std::string::npos) {
+                headerParsed = true;
+
+                std::string headers = requestStr.substr(0, headerEnd);
+                std::istringstream iss(headers);
+                std::string line;
+                while (std::getline(iss, line)) {
+                    if (line.find("Content-Length:") != std::string::npos) {
+                        std::string lenStr = line.substr(line.find(":") + 1);
+                        content_length = std::atoi(trim(lenStr).c_str());
+                    }
+                }
+                if (content_length == 0)
+                    break;
+            } 
+        }
+        if (headerParsed) {
+            size_t bodyStart = requestStr.find("\r\n\r\n") + 4;
+            size_t bodySize = requestStr.size() - bodyStart;
+            if (bodySize >= content_length)
+                break;
+        }
+    }
+    if (bytesRead < 0) {
+        std::cerr << "Erreur de lecture de FD " << fd << std::endl;
+        close(fd);
+        return;
+    }
+    std::cout << "Requête reçue (FD " << fd << ") :" << std::endl;
+    std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
+    RequestParser request;
+    if (!request.parse(requestStr)) {
+        std::cerr << "Erreur de parsing" << std::endl;
         close(fd);
         return;
     }
 
-    std::cout << "Requête reçue (FD " << fd << ") :\n" << buffer << std::endl;
-    std::string req(buffer);
-    RequestParser request;
-    request.parse(req);
+    const LocationConfig *loc = matchLocation(request.getUri());
+    if (loc && request.getBody().size() > config.client_max_body_size) {
+        std::string error = makeErrorPage(413);
+        send(fd, error.c_str(), error.size(), 0);
+        close(fd);
+        return;
+    }
 
-    type result = handle_request(request);
-    if (result == GET || result == POST || result == DELETE || result == NONE) {
+    if (handle_request(request) == GET || handle_request(request) == POST || handle_request(request) == DELETE) {
         send(fd, response_html.c_str(), response_html.size(), 0);
-        if (!response_body.empty()){
+        if (!response_body.empty()) {
             send(fd, &response_body[0], response_body.size(), 0);
             response_body.clear();
         }
@@ -111,6 +148,7 @@ std::string getMimeType(const std::string& path) {
     else
         return "application/octet-stream"; // par défaut
 }
+
 void Server::handle_get(RequestParser &req)
 {
     std::string uri = req.getUri();
@@ -123,7 +161,6 @@ void Server::handle_get(RequestParser &req)
         response_html = makeErrorPage(404);
         return;
     }
-    std::cout << "[REDIRECT] Vers : " << loc->redirect << std::endl;
     if (!loc->redirect.empty()) {
         std::ostringstream header;
         header << "HTTP/1.1 301 Moved Permanently\r\n";
@@ -144,18 +181,18 @@ void Server::handle_get(RequestParser &req)
     // Si c’est un dossier ou qu’il finit par '/', on ajoute index
     struct stat sb;
     if (stat(file_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-        if (loc->index.empty()) {
-            response_html = makeErrorPage(403); // pas de fichier index et directory_listing désactivé
+        if (!loc->index.empty()) {
+            if (file_path[file_path.size() - 1] != '/')
+                file_path += '/';
+            file_path += loc->index;
+    } else if (loc->directory_listing) {
+        response_html = generateAutoindexHTML(file_path, req.getUri());
+        return;
+    } else {
+        response_html = makeErrorPage(403);
+        return;
         }
-        if (file_path[file_path.size() - 1] != '/')
-            file_path += '/';
-        file_path += loc->index;
     }
-    std::cout << "[DEBUG] URI: " << uri << std::endl;
-    std::cout << "[DEBUG] Location matched: " << loc->path << std::endl;
-    std::cout << "[DEBUG] Root: " << loc->root << std::endl;
-    std::cout << "[DEBUG] File path final: " << file_path << std::endl;
-
 
     // Lire le fichier cible
     std::ifstream file(file_path.c_str(), std::ios::binary);
@@ -168,7 +205,6 @@ void Server::handle_get(RequestParser &req)
     file.close();
 
     std::string mime = getMimeType(file_path);
-    std::cout << "[DEBUG] MIME type: " << mime << std::endl;
     std::ostringstream header;
     header << "HTTP/1.1 200 OK\r\n";
     header << "Content-Type: " << mime << "\r\n";
@@ -185,16 +221,20 @@ void Server::handle_post(RequestParser &req) {
         response_html = makeErrorPage(404);
         return;
     }
-    std::cout << "[POST] URI reçue : " << req.getUri() << std::endl;
-
     std::string body = req.getBody(); // récupère le body parsé
+    std::cout << "[DEBUG] Body size: " << body.size()
+          << ", max allowed: " << config.client_max_body_size << std::endl;
+
+    if (body.size() > config.client_max_body_size) {
+        std::cout << "[413] Payload Too Large (" << body.size() << " > " << config.client_max_body_size << ")" << std::endl;
+        response_html = makeErrorPage(413);
+        return;
+    }
     std::string target_path;
     if (!loc->upload_store.empty())
         target_path = loc->upload_store + "/upload_result.txt";
     else
         target_path = loc->root + "/upload_result.txt";
-    std::cout << "loc->uploadstore = " << loc->upload_store << std::endl;
-    std::cout << "[POST] File will be saved to: " << target_path << std::endl;
 
     std::ofstream out(target_path.c_str(), std::ios::app);
     if (!out.is_open()) {
@@ -213,11 +253,6 @@ void Server::handle_post(RequestParser &req) {
     header << "\r\n";
 
     response_html = header.str() + response_body;
-    std::cout << "[DEBUG] URI: " << req.getUri() << std::endl;
-    std::cout << "[DEBUG] Location matched: " << loc->path << std::endl;
-    std::cout << "[DEBUG] Root: " << loc->root << std::endl;    
-    std::cout << "[DEBUG] UploadStore: " << loc->upload_store << std::endl;
-
 }
 
 void Server::handle_delete(RequestParser &req) {
@@ -262,6 +297,20 @@ type Server::handle_request(RequestParser &req)
         return NONE;
     }
 
+    if (req.getMethod() == "GET")
+    {
+        handle_get(req);
+        return GET;
+    }
+    if (req.getMethod() == "POST")
+    {
+        handle_post(req);
+        return POST;
+    }
+    if (req.getMethod() == "DELETE"){
+        handle_delete(req);
+        return DELETE;
+    }
     std::vector<std::string>::const_iterator it = std::find(loc->allow_methods.begin(), loc->allow_methods.end(), req.getMethod());
     if (it == loc->allow_methods.end()) {
         std::ostringstream oss;
@@ -279,23 +328,39 @@ type Server::handle_request(RequestParser &req)
         response_html = oss.str();
         return NONE;
     }
-    if (req.getMethod() == "GET")
-    {
-        handle_get(req);
-        return GET;
-    }
-    if (req.getMethod() == "POST")
-    {
-        handle_post(req);
-        return POST;
-    }
-    if (req.getMethod() == "DELETE"){
-        handle_delete(req);
-        return DELETE;
-    }
     return NONE;
 
 }
+
+std::string Server::generateAutoindexHTML(const std::string &dir_path, const std::string &uri) {
+	DIR *dir = opendir(dir_path.c_str());
+	if (!dir)
+		return makeErrorPage(403);
+
+	std::ostringstream body;
+	body << "<html><head><title>Index of " << uri << "</title></head><body>";
+	body << "<h1>Index of " << uri << "</h1><ul>";
+
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		std::string name(entry->d_name);
+		if (name == ".") continue;
+		body << "<li><a href=\"" 
+     << (uri[uri.size() - 1] == '/' ? uri : uri + "/")
+     << name << "\">" << name << "</a></li>";
+	}
+    closedir(dir);
+    body << "</ul></body></html>";
+
+    std::ostringstream header;
+    header << "HTTP/1.1 200 ok\r\n";
+    header << "Content-Type: text/html\r\n";
+    header << "Content-Length: " << body.str().size() << "\r\n";
+    header << "\r\n";
+
+    return header.str() + body.str();
+}
+
 
 const LocationConfig* Server::matchLocation(const std::string& uri) const
 {

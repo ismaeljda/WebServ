@@ -4,11 +4,11 @@ import cgi
 import os
 import html
 
-UPLOAD_DIR = "../uploads"  # adapte le chemin en fonction de ton serveur
+# ✅ Récupérer le dossier d’upload depuis la variable d’environnement (Webserv doit l’injecter)
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "../uploads")  # fallback si non défini
 
 def save_file(fileitem):
     if fileitem.filename:
-        # Nettoyer le nom de fichier
         filename = os.path.basename(fileitem.filename)
         filepath = os.path.join(UPLOAD_DIR, filename)
         with open(filepath, 'wb') as f:
@@ -18,31 +18,33 @@ def save_file(fileitem):
 
 def main():
     print("Content-Type: text/html\n")
+
     form = cgi.FieldStorage()
 
     titre = form.getfirst("titre", "").strip()
     auteur = form.getfirst("auteur", "").strip()
     recette = form.getfirst("recette", "").strip()
 
-    # Sauvegarde du texte
+    # Sécuriser le nom de fichier
     safe_titre = "".join(c for c in titre if c.isalnum() or c in (' ', '_')).rstrip()
     filename = f"recette_{safe_titre}.txt"
     filepath = os.path.join(UPLOAD_DIR, filename)
 
-    if not os.path.exists(UPLOAD_DIR):
-        os.makedirs(UPLOAD_DIR)
+    # ✅ S'assurer que le dossier d'upload existe
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+    # Écrire la recette texte
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"Titre: {titre}\n")
         f.write(f"Auteur: {auteur}\n")
         f.write("Recette:\n")
         f.write(recette)
 
-    # Sauvegarde de l'image si présente
+    # Gérer l'image si elle existe
     image_file = form["image"] if "image" in form else None
     image_filename = save_file(image_file) if image_file else None
 
-    # Affichage HTML
+    # Réponse HTML
     print(f"""
     <html>
     <head><title>Recette enregistrée</title></head>

@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <algorithm>
+#include <dirent.h>
 #include "../Request/RequestParser.hpp"
 #include "../Config/ConfigParser.hpp"
 #include "../Request/HttpStatusCodes.hpp"
@@ -56,6 +57,7 @@ class Server
         const LocationConfig* matchLocation(const std::string &uri) const;
         std::string makeErrorPage(int code) const;
         bool isDirectory(const std::string &path);
+        std::string generateAutoindexHTML(const std::string &dir_path, const std::string &uri);
 
         int getServerfd() const;
         int getPort() const;
