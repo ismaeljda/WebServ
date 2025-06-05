@@ -40,6 +40,7 @@ int Server::getServerfd() const {
 int Server::getPort() const {
     return config.listen;
 }
+////////constructeur + destructeur + getter ↑↑↑↑   /////////////////////////////////////////////////////////////////////////////////////////////
 
 void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server) {
     sockaddr_in clientAddr;
@@ -129,6 +130,7 @@ void Server::handleClient(int fd) {
     }
     close(fd);
 }
+//////// Fonction pour gerer les nouveau client ↑↑↑↑↑↑↑ /////////////////////////////////////////////////////////////////////////////////////////////
 
 std::string getMimeType(const std::string& path) {
     if (path.find(".html") != std::string::npos)
@@ -148,6 +150,7 @@ std::string getMimeType(const std::string& path) {
     else
         return "application/octet-stream"; // par défaut
 }
+/////////// fonction pour trouver le type qui precede le '.' ↑↑↑↑↑///////////////////////////////////////////////////
 
 void Server::handle_get(RequestParser &req)
 {
@@ -331,6 +334,7 @@ type Server::handle_request(RequestParser &req)
     return NONE;
 
 }
+//////// Fonction pour gerer request -> GET / POST / DELETE ↑↑↑↑↑↑↑↑↑ //////////////////////////////////////////////////
 
 std::string Server::generateAutoindexHTML(const std::string &dir_path, const std::string &uri) {
 	DIR *dir = opendir(dir_path.c_str());
@@ -391,6 +395,8 @@ bool Server::isDirectory(const std::string &path) {
     return S_ISDIR(statbuf.st_mode);
 }
 
+///////////////////////// fonction utils ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////////////////////////
+
 std::string Server::makeErrorPage(int code) const {
     std::string body;
     std::string filepath;
@@ -423,3 +429,5 @@ std::string Server::makeErrorPage(int code) const {
 
     return header.str();
 }
+
+////////////////////////// Fonction pour les Pages Erreur pour le serveur ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////
