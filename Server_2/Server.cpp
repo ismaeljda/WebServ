@@ -121,7 +121,8 @@ void Server::handleClient(int fd) {
         return;
     }
 
-    if (handle_request(request) == GET || handle_request(request) == POST || handle_request(request) == DELETE) {
+    type methodType = handle_request(request);
+    if (methodType == GET ||  methodType == POST || methodType == DELETE) {
         send(fd, response_html.c_str(), response_html.size(), 0);
         if (!response_body.empty()) {
             send(fd, &response_body[0], response_body.size(), 0);
@@ -299,9 +300,14 @@ type Server::handle_request(RequestParser &req)
         response_html = makeErrorPage(404);
         return NONE;
     }
-
+    
     if (req.getMethod() == "GET")
     {
+        if (isCgiRequest(loc, req.getUri()))
+        {
+            handle_cgi(req);
+            return GET;
+        }
         handle_get(req);
         return GET;
     }
@@ -332,7 +338,6 @@ type Server::handle_request(RequestParser &req)
         return NONE;
     }
     return NONE;
-
 }
 //////// Fonction pour gerer request -> GET / POST / DELETE ↑↑↑↑↑↑↑↑↑ //////////////////////////////////////////////////
 
@@ -431,3 +436,129 @@ std::string Server::makeErrorPage(int code) const {
 }
 
 ////////////////////////// Fonction pour les Pages Erreur pour le serveur ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////
+//////////////Fonction Pour CGI below : /////////////////////////////////////////////////////////////////
+
+bool Server::isCgiRequest(const LocationConfig *loc, const std::string &uri) {
+    if (!loc || loc->cgi_pass.empty())
+        return false;
+
+    // Si l'extension est explicite
+    for (size_t i = 0; i < loc->cgi_extensions.size(); ++i) {
+        const std::string &ext = loc->cgi_extensions[i];
+        if (uri.size() >= ext.size() &&
+            uri.compare(uri.size() - ext.size(), ext.size(), ext) == 0)
+            return true;
+    }
+
+    // Si URI exactement égal au path d’une location avec cgi_pass
+    if (uri == loc->path && !loc->cgi_pass.empty())
+        return true;
+
+    return false;
+}
+
+void Server::handle_cgi(RequestParser &req) {
+    const LocationConfig *loc = matchLocation(req.getUri());
+    if (!loc) {
+        response_html = makeErrorPage(404);
+        return;
+    }
+
+    std::string scriptPath = loc->cgi_pass;
+    std::vector<std::string> env;
+
+    std::ostringstream oss;
+    oss << req.getBody().size();
+    std::string contentLengthStr = oss.str();
+
+    env.push_back("REQUEST_METHOD=" + req.getMethod());
+    env.push_back("QUERY_STRING" + req.getQueryParamsAsString()); //a implenter
+    env.push_back("CONTENT_LENGTH=" + contentLengthStr);
+    env.push_back("SCRIPT_FILENAME=" + scriptPath);
+    env.push_back("GATEWAY_INTERFACE=CGI/1.1");
+    env.push_back("SERVER_PROTOCOL=HTTP/1.1");
+    env.push_back("REDIRECT_STATUS=200");
+
+    //convertir en char 
+    char **envp = new char*[env.size() + 1]; // +1 pour NULL final
+    for (size_t i = 0; i < env.size(); ++i)
+        envp[i] = strdup(env[i].c_str()); // copie en mémoire dynamique
+    envp[env.size()] = NULL;
+
+    int in_pipe[2];
+    int out_pipe[2];
+    if (pipe(in_pipe) == -1 || pipe(out_pipe) == -1){
+        response_html = makeErrorPage(500);
+        return;
+    }
+    pid_t pid = fork();
+    if (pid == -1) {
+        response_html = makeErrorPage(500);
+        return;
+    }
+
+    if (pid == 0) { //dans l'enfant -> CGI
+        dup2(in_pipe[0], STDIN_FILENO);
+        dup2(out_pipe[1], STDOUT_FILENO);
+
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+
+        char *argv[] = { (char*)scriptPath.c_str(), NULL };
+        execve(scriptPath.c_str(), argv, envp);
+        exit(1);
+    }
+    else { // parent ecrit dans stdin du child ->(body), lire ce que le script a ecrit sur stdout
+        close(in_pipe[0]);
+        write(in_pipe[1], req.getBody().c_str(), req.getBody().size());
+        close(in_pipe[1]);
+
+        close(out_pipe[1]);
+        char buffer[1024];
+        std::string cgi_output;
+        ssize_t bytesRead;
+        while ((bytesRead = read(out_pipe[0], buffer, sizeof(buffer))) > 0) {
+            cgi_output.append(buffer, bytesRead);
+        }
+        close(out_pipe[0]);
+
+        waitpid(pid, NULL, 0);
+        for (size_t i = 0; i < env.size(); ++i)
+            free(envp[i]);
+        delete[] envp;
+        
+        size_t header_end = cgi_output.find("\r\n\r\n");
+        if (header_end == std::string::npos)
+            header_end = cgi_output.find("\n\n");
+        if (header_end == std::string::npos){
+            response_html = makeErrorPage(500);
+            return;
+        }
+
+        std::string headers = cgi_output.substr(0, header_end);
+        std::string body = cgi_output.substr(header_end + 4);
+
+        std::string contentType = "text/html";
+        std::string status = "200 OK";
+
+        std::istringstream headerStream(headers);
+        std::string line;
+        while (std::getline(headerStream, line)) {
+            if (line.find("Content-Type:") == 0)
+                contentType = trim(line.substr(13));
+            else if (line.find("Status:") == 0)
+                status = trim(line.substr(7));
+        }
+
+        std::ostringstream response;
+        response << "HTTP/1.1 " << status << "\r\n";
+        response << "Content-Type: " << contentType << "\r\n";
+        response << "Content-Length: " << body.size() << "\r\n";
+        response << "\r\n";
+        response << body;
+
+        response_html = response.str();
+        std::cout << "repsonse_html : " << response_html << std::endl;
+    }
+}
+

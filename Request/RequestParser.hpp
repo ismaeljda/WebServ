@@ -29,6 +29,9 @@ class RequestParser
         bool isvalidHeader(const std::map<std::string, std::string> header) const;
         bool parse(std::string& str);
         void display_request();
+        
+        std::string getQueryParamsAsString() const;
+
 
         //getter
         const std::string& getMethod() const;

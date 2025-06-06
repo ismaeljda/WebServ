@@ -9,12 +9,14 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <string>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <algorithm>
 #include <dirent.h>
 #include "../Request/RequestParser.hpp"
@@ -58,6 +60,9 @@ class Server
         std::string makeErrorPage(int code) const;
         bool isDirectory(const std::string &path);
         std::string generateAutoindexHTML(const std::string &dir_path, const std::string &uri);
+
+        bool isCgiRequest(const LocationConfig *loc, const std::string &uri);
+        void handle_cgi(RequestParser &req);
 
         int getServerfd() const;
         int getPort() const;

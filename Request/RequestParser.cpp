@@ -127,6 +127,18 @@ void RequestParser::display_request()
     std::cout << "Body is: " << body << std::endl;
 }
 
+std::string RequestParser::getQueryParamsAsString() const {
+    std::ostringstream oss;
+    std::map<std::string, std::string>::const_iterator it;
+    for (it = queryParams.begin(); it != queryParams.end(); ++it) {
+        if (it != queryParams.begin())
+            oss << "&";
+        oss << it->first << "=" << it->second;
+    }
+    return oss.str();
+}
+
+
 //Getter
 
 const std::string& RequestParser::getMethod() const { return method; }
