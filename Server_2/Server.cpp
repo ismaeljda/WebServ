@@ -52,8 +52,6 @@ void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &clie
         std::cerr << "Erreur: accept() a echoue sur le port : " << config.listen << std::endl;
         return; 
     }
-    std::cout << "✅ Nouveau client connecté sur le port " << config.listen
-	          << " (FD = " << client_fd << ")" << std::endl;
     pollfd client_pollfd;
     client_pollfd.fd = client_fd;
     client_pollfd.events = POLLIN;
@@ -72,9 +70,19 @@ void Server::handleClient(int fd) {
     size_t content_length = 0;
     bool headerParsed = false;
 
+    const size_t MAX_REQUEST_SIZE = 10 * 1024 * 1024;
+
     while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
         requestStr.append(buffer, bytesRead);
         total_read += bytesRead;
+
+        if (total_read > MAX_REQUEST_SIZE) {
+            std::cerr << "Requête trop volumineuse" << std::endl;
+            std::string error = makeErrorPage(413);
+            send(fd, error.c_str(), error.size(), 0);
+            close(fd);
+            return;
+        }
 
         if (!headerParsed) {
             size_t headerEnd = requestStr.find("\r\n\r\n");
@@ -130,6 +138,7 @@ void Server::handleClient(int fd) {
             send(fd, &response_body[0], response_body.size(), 0);
             response_body.clear();
         }
+        response_html.clear();
     }
     close(fd);
 }
@@ -293,8 +302,6 @@ void Server::handle_post(RequestParser &req) {
         return;
     }
     std::string body = req.getBody(); // récupère le body parsé
-    std::cout << "[DEBUG] Body size: " << body.size()
-          << ", max allowed: " << config.client_max_body_size << std::endl;
 
     if (body.size() > config.client_max_body_size) {
         std::cout << "[413] Payload Too Large (" << body.size() << " > " << config.client_max_body_size << ")" << std::endl;
@@ -315,15 +322,24 @@ void Server::handle_post(RequestParser &req) {
 
     out << body << "\n";
     out.close();
-
-    std::string response_body = "<html><body>POST received and saved.</body></html>";
+    std::string response_body_content = "<html><body>POST received and saved.</body></html>";
     std::ostringstream header;
     header << "HTTP/1.1 200 OK\r\n";
+    header << "Server: webserv/1.0\r\n";
     header << "Content-Type: text/html\r\n";
-    header << "Content-Length: " << response_body.size() << "\r\n";
+    header << "Content-Length: " << response_body_content.size() << "\r\n";
+    header << "Connection: close\r\n";
     header << "\r\n";
 
-    response_html = header.str() + response_body;
+    response_html = header.str() + response_body_content;
+    // std::string response_body = "<html><body>POST received and saved.</body></html>";
+    // std::ostringstream header;
+    // header << "HTTP/1.1 200 OK\r\n";
+    // header << "Content-Type: text/html\r\n";
+    // header << "Content-Length: " << response_body.size() << "\r\n";
+    // header << "\r\n";
+
+    // response_html = header.str() + response_body;
 }
 
 void Server::handle_delete(RequestParser &req) {
@@ -340,24 +356,34 @@ void Server::handle_delete(RequestParser &req) {
         file_path += '/';
     file_path += relative_path;
 
-    std::cout << "DELETE target file -> " << file_path << std::endl;
-
     if (access(file_path.c_str(), F_OK) == -1) {
         response_html = makeErrorPage(404);
         return;
     }
     if (remove(file_path.c_str()) == 0) {
-        std::string body = "<html><body><h1>File deleted successfully.</h1></body></html>";
-        std::ostringstream header;
-        header << "HTTP/1.1 200 ok\r\n";
-        header << "Content-Type: text/html\r\n";
-        header << "Content-Length: " << body.size() << "\r\n";
-        header << "\r\n";
-        
-        response_html = header.str() + body; 
-    } else {
-        response_html = makeErrorPage(403);
+    std::string body_content = "<html><body><h1>File deleted successfully.</h1></body></html>";
+    std::ostringstream header;
+    header << "HTTP/1.1 200 OK\r\n";
+    header << "Server: webserv/1.0\r\n";
+    header << "Content-Type: text/html\r\n";
+    header << "Content-Length: " << body_content.size() << "\r\n";
+    header << "Connection: close\r\n";
+    header << "\r\n";
+    
+    response_html = header.str() + body_content;  // LIGNE IMPORTANTE
     }
+    // if (remove(file_path.c_str()) == 0) {
+    //     std::string body = "<html><body><h1>File deleted successfully.</h1></body></html>";
+    //     std::ostringstream header;
+    //     header << "HTTP/1.1 200 ok\r\n";
+    //     header << "Content-Type: text/html\r\n";
+    //     header << "Content-Length: " << body.size() << "\r\n";
+    //     header << "\r\n";
+        
+    //     response_html = header.str() + body; 
+    // } else {
+    //     response_html = makeErrorPage(403);
+    // }
 }
 
 type Server::handle_request(RequestParser &req)
@@ -367,7 +393,11 @@ type Server::handle_request(RequestParser &req)
         response_html = makeErrorPage(404);
         return NONE;
     }
-    
+    if (req.getMethod() == "HEAD") {
+        handle_get(req);
+        response_body.clear();
+        return GET;
+    }
     if (req.getMethod() == "GET")
     {
         if (isCgiRequest(loc, req.getUri()))
@@ -471,11 +501,10 @@ bool Server::isDirectory(const std::string &path) {
 }
 
 ///////////////////////// fonction utils ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////////////////////////
-
 std::string Server::makeErrorPage(int code) const {
     std::string body;
     std::string filepath;
-
+    
     std::map<int, std::string>::const_iterator it = config.error_pages.find(code);
     if (it != config.error_pages.end()) {
         filepath = it->second;
@@ -487,23 +516,92 @@ std::string Server::makeErrorPage(int code) const {
             file.close();
         }
     }
-
+    
     if (body.empty()) {
         std::ostringstream ss;
-        ss << "<html><head><title>" << code << " Error</title></head>"
-           << "<body><h1>" << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "</h1></body></html>";
+        std::string error_message = "Error";  // Message par défaut
+        
+        // Essayer d'obtenir le message d'erreur, avec fallback
+        try {
+            error_message = HttpStatusCodes::getMessage((HttpStatusCodes::Code)code);
+        } catch (...) {
+            // Si getMessage échoue, utiliser des messages standard
+            switch(code) {
+                case 400: error_message = "Bad Request"; break;
+                case 403: error_message = "Forbidden"; break;
+                case 404: error_message = "Not Found"; break;
+                case 405: error_message = "Method Not Allowed"; break;
+                case 413: error_message = "Payload Too Large"; break;
+                case 500: error_message = "Internal Server Error"; break;
+                default: error_message = "Error"; break;
+            }
+        }
+        
+        ss << "<html><head><title>" << code << " " << error_message << "</title></head>"
+           << "<body><h1>" << code << " " << error_message << "</h1></body></html>";
         body = ss.str();
     }
 
     std::ostringstream header;
-    header << "HTTP/1.1 " << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "\r\n";
+    header << "HTTP/1.1 " << code << " ";
+    
+    // Message d'erreur sécurisé
+    try {
+        header << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code);
+    } catch (...) {
+        switch(code) {
+            case 400: header << "Bad Request"; break;
+            case 403: header << "Forbidden"; break;
+            case 404: header << "Not Found"; break;
+            case 405: header << "Method Not Allowed"; break;
+            case 413: header << "Payload Too Large"; break;
+            case 500: header << "Internal Server Error"; break;
+            default: header << "Error"; break;
+        }
+    }
+    
+    header << "\r\n";
+    header << "Server: webserv/1.0\r\n";              // AJOUTÉ
     header << "Content-Type: text/html\r\n";
     header << "Content-Length: " << body.size() << "\r\n";
+    header << "Connection: close\r\n";                // AJOUTÉ
     header << "\r\n";
     header << body;
 
     return header.str();
 }
+// std::string Server::makeErrorPage(int code) const {
+//     std::string body;
+//     std::string filepath;
+
+//     std::map<int, std::string>::const_iterator it = config.error_pages.find(code);
+//     if (it != config.error_pages.end()) {
+//         filepath = it->second;
+//         std::ifstream file(filepath.c_str(), std::ios::binary);
+//         if (file.is_open()) {
+//             std::ostringstream ss;
+//             ss << file.rdbuf();
+//             body = ss.str();
+//             file.close();
+//         }
+//     }
+
+//     if (body.empty()) {
+//         std::ostringstream ss;
+//         ss << "<html><head><title>" << code << " Error</title></head>"
+//            << "<body><h1>" << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "</h1></body></html>";
+//         body = ss.str();
+//     }
+
+//     std::ostringstream header;
+//     header << "HTTP/1.1 " << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "\r\n";
+//     header << "Content-Type: text/html\r\n";
+//     header << "Content-Length: " << body.size() << "\r\n";
+//     header << "\r\n";
+//     header << body;
+
+//     return header.str();
+// }
 
 ////////////////////////// Fonction pour les Pages Erreur pour le serveur ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////
 //////////////Fonction Pour CGI below : /////////////////////////////////////////////////////////////////

@@ -14,7 +14,7 @@ RequestParser::~RequestParser()
 }
 bool RequestParser::isvalidMethod(const std::string& method) const
 {
-    return method == "GET" || method == "POST" || method == "DELETE";
+    return method == "GET" || method == "POST" || method == "DELETE" || method == "HEAD";
 }
 
 bool RequestParser::isvalidVersion(const std::string& version) const
