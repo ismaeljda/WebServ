@@ -1,4 +1,5 @@
 #include "../Config/ConfigParser.hpp"
+#include "../Request/utils.hpp"
 #include <iostream>
 
 /// Parsing function ///////////////////////////////////////////////////////////////////////////////
@@ -11,7 +12,7 @@ ConfigParser::ConfigParser(const std::string &path)
 	std::string line;
 	while (std::getline(file, line))
 	{
-		line = trim(line);
+		line = Utils::trim(line);
 		if (line.empty() || line[0] == '#') //ignore les com ou lignes vides
 			continue;
 		if (line == "server {")
@@ -27,12 +28,12 @@ void ConfigParser::parseServerBlock(std::ifstream &file, std::string &line) {
 	ServerConfig server;
 	while (std::getline(file, line))
 	{
-		line = trim(line);
+		line = Utils::trim(line);
 		if (line.empty() || line[0] == '#')
 			continue;
 		if (line == "}")
 			break;
-		if (startWithWord(line, "location"))
+		if (Utils::startWithWord(line, "location"))
 			parseLocationBlock(file, line, server);
 		else
 			parseDirective(line, server);
@@ -41,7 +42,7 @@ void ConfigParser::parseServerBlock(std::ifstream &file, std::string &line) {
 }
 
 void ConfigParser::parseDirective(const std::string &line, ServerConfig &server) {
-	std::vector<std::string> tokens = split(line);
+	std::vector<std::string> tokens = Utils::split(line);
 	if (tokens.empty())
 		return;
 	std::string key = tokens[0];
@@ -74,7 +75,7 @@ void ConfigParser::parseDirective(const std::string &line, ServerConfig &server)
 void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server) {
 	LocationConfig location;
 
-	std::vector<std::string> tokens = split(line);
+	std::vector<std::string> tokens = Utils::split(line);
 	if (tokens.size() < 2) {
 		std::cerr << "Erreur: bloc location line : " << line << std::endl;
 		return;
@@ -82,7 +83,7 @@ void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, Se
 	location.path = tokens[1]; //ce qui commence par "/ ..."
 
 	while (std::getline(file, line)) {
-		line = trim(line);
+		line = Utils::trim(line);
 		if (line.empty() || line[0] == '#')
 			continue;
 		if (line == "}")
@@ -93,7 +94,7 @@ void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, Se
 }
 
 void ConfigParser::parseLocationDirective(const std::string &line, LocationConfig &location) {
-	std::vector<std::string> tokens = split(line);
+	std::vector<std::string> tokens = Utils::split(line);
 	if (tokens.empty())
 		return;
 	
@@ -141,33 +142,6 @@ const std::vector<ServerConfig>& ConfigParser::getServers() const {
 }
 
 /// Utils function /////////////////////////////////////////////////////////////////////////
-
-std::string ConfigParser::trim(const std::string &s) {
-	size_t start = s.find_first_not_of(" \t\r\n");
-	size_t end = s.find_last_not_of(" \t\r\n");
-
-	if (start == std::string::npos)
-		return "";
-	return s.substr(start, end - start + 1);
-}
-
-std::vector<std::string> ConfigParser::split(const std::string &s) {
-	std::vector<std::string> tokens;
-	std::istringstream iss(s);
-	std::string word;
-
-	while (iss >> word){
-		tokens.push_back(word);
-		for (size_t i = 0; i < tokens.size(); ++i)
-			if (!tokens[i].empty() && tokens[i][tokens[i].size() - 1] == ';')
-				tokens[i].erase(tokens[i].size() - 1);
-	}
-	return tokens;
-}
-
-bool ConfigParser::startWithWord(const std::string &line, const std::string &prefix) {
-	return line.compare(0, prefix.length(), prefix) == 0;
-}
 
 size_t ConfigParser::parseSize(const std::string &sizeStr) {
     if (sizeStr.empty())

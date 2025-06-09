@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cctype>
 #include "ConfigStruct.hpp"
+#include "../Request/utils.hpp"
 
 class ConfigParser {
 	private :

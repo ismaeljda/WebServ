@@ -1,4 +1,5 @@
 #include "RequestParser.hpp"
+#include "utils.hpp"
 #include <iostream>
 #include <sstream>
 
@@ -69,8 +70,8 @@ bool RequestParser::parse(std::string& str)
         if (colon == std::string::npos)
             continue; // ligne mal formée : on ignore
 
-        std::string key = trim(line.substr(0, colon));
-        std::string value = trim(line.substr(colon + 1));
+        std::string key = Utils::trim(line.substr(0, colon));
+        std::string value = Utils::trim(line.substr(colon + 1));
         if (!key.empty())
             headers[key] = value;
     }

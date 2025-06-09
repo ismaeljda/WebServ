@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include "utils.hpp"
 
 std::string trim(const std::string &str);
 

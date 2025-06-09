@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include "../Request/utils.hpp"
 
 Server::Server(const ServerConfig &conf) : config(conf){
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -62,6 +63,7 @@ void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &clie
     client_to_server[client_fd] = this;
 }
 
+
 void Server::handleClient(int fd) {
     std::string requestStr;
     char buffer[4096];
@@ -85,7 +87,7 @@ void Server::handleClient(int fd) {
                 while (std::getline(iss, line)) {
                     if (line.find("Content-Length:") != std::string::npos) {
                         std::string lenStr = line.substr(line.find(":") + 1);
-                        content_length = std::atoi(trim(lenStr).c_str());
+                        content_length = std::atoi(Utils::trim(lenStr).c_str());
                     }
                 }
                 if (content_length == 0)
@@ -108,7 +110,7 @@ void Server::handleClient(int fd) {
     std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
     RequestParser request;
     if (!request.parse(requestStr)) {
-        std::cerr << "Erreur de parsing" << std::endl;
+        std::cerr << "Keep-Alive" << std::endl;
         close(fd);
         return;
     }
@@ -153,6 +155,70 @@ std::string getMimeType(const std::string& path) {
 }
 /////////// fonction pour trouver le type qui precede le '.' ↑↑↑↑↑///////////////////////////////////////////////////
 
+// void Server::handle_get(RequestParser &req)
+// {
+//     std::string uri = req.getUri();
+//     if (uri.empty())
+//         uri = "/";
+
+//     // Match la location la plus adaptée
+//     const LocationConfig* loc = matchLocation(uri);
+//     if (!loc) {
+//         response_html = makeErrorPage(404);
+//         return;
+//     }
+//     if (!loc->redirect.empty()) {
+//         std::ostringstream header;
+//         header << "HTTP/1.1 301 Moved Permanently\r\n";
+//         header << "Location: " << loc->redirect << "\r\n";
+//         header << "Content-Length: 0\r\n";
+//         header << "\r\n";
+//         response_html = header.str();
+//         return;
+//     }
+
+//     // Construction du chemin absolu à partir du root de la location
+//     std::string relative_path = uri.substr(loc->path.length());
+//     std::string file_path = loc->root;
+//     if (!relative_path.empty() && relative_path[0] != '/')
+//         file_path += '/';
+//     file_path += relative_path;
+
+//     // Si c’est un dossier ou qu’il finit par '/', on ajoute index
+//     struct stat sb;
+//     if (stat(file_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+//         if (!loc->index.empty()) {
+//             if (file_path[file_path.size() - 1] != '/')
+//                 file_path += '/';
+//             file_path += loc->index;
+//     } else if (loc->directory_listing) {
+//         response_html = generateAutoindexHTML(file_path, req.getUri());
+//         return;
+//     } else {
+//         response_html = makeErrorPage(403);
+//         return;
+//         }
+//     }
+
+//     // Lire le fichier cible
+//     std::ifstream file(file_path.c_str(), std::ios::binary);
+//     if (!file.is_open()) {
+//         response_html = makeErrorPage(404);
+//         return;
+//     }
+
+//     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+//     file.close();
+
+//     std::ostringstream header;
+//     header << "HTTP/1.1 200 OK\r\n";
+//     header << "Content-Type: " << getMimeType(file_path) << "\r\n";
+//     header << "Content-Length: " << buffer.size() << "\r\n";
+//     header << "\r\n";
+
+//     response_html = header.str();
+//     response_body = buffer;
+// }
 void Server::handle_get(RequestParser &req)
 {
     std::string uri = req.getUri();
@@ -169,7 +235,8 @@ void Server::handle_get(RequestParser &req)
         std::ostringstream header;
         header << "HTTP/1.1 301 Moved Permanently\r\n";
         header << "Location: " << loc->redirect << "\r\n";
-        header << "Content Length: 0\r\n";
+        header << "Content-Length: 0\r\n";
+        header << "Connection: close\r\n";
         header << "\r\n";
         response_html = header.str();
         return;
@@ -189,12 +256,12 @@ void Server::handle_get(RequestParser &req)
             if (file_path[file_path.size() - 1] != '/')
                 file_path += '/';
             file_path += loc->index;
-    } else if (loc->directory_listing) {
-        response_html = generateAutoindexHTML(file_path, req.getUri());
-        return;
-    } else {
-        response_html = makeErrorPage(403);
-        return;
+        } else if (loc->directory_listing) {
+            response_html = generateAutoindexHTML(file_path, req.getUri());
+            return;
+        } else {
+            response_html = makeErrorPage(403);
+            return;
         }
     }
 
@@ -208,11 +275,11 @@ void Server::handle_get(RequestParser &req)
     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
-    std::string mime = getMimeType(file_path);
     std::ostringstream header;
     header << "HTTP/1.1 200 OK\r\n";
-    header << "Content-Type: " << mime << "\r\n";
+    header << "Content-Type: " << getMimeType(file_path) << "; charset=UTF-8\r\n";
     header << "Content-Length: " << buffer.size() << "\r\n";
+    header << "Connection: close\r\n";
     header << "\r\n";
 
     response_html = header.str();
@@ -313,7 +380,10 @@ type Server::handle_request(RequestParser &req)
     }
     if (req.getMethod() == "POST")
     {
-        handle_post(req);
+        if (isCgiRequest(loc, req.getUri()))
+            handle_cgi(req);
+        else 
+            handle_post(req);
         return POST;
     }
     if (req.getMethod() == "DELETE"){
@@ -465,6 +535,22 @@ void Server::handle_cgi(RequestParser &req) {
     }
 
     std::string scriptPath = loc->cgi_pass;
+
+    if (loc->cgi_pass[loc->cgi_pass.size() - 1] == '/') {
+        std::string relative_path = req.getUri().substr(loc->path.length());
+
+        if (!relative_path.empty() && relative_path[0] == '/')
+            relative_path = relative_path.substr(1);
+
+        scriptPath = loc->cgi_pass + relative_path;
+    } else {
+        scriptPath = loc->cgi_pass;
+    }
+    if (access(scriptPath.c_str(), X_OK) != 0) {
+        std::cerr << "[CGI] Fichier CGI introuvable ou non exécutable : " << scriptPath << std::endl;
+        response_html = makeErrorPage(404);
+        return;
+    }
     std::vector<std::string> env;
 
     std::ostringstream oss;
@@ -474,6 +560,7 @@ void Server::handle_cgi(RequestParser &req) {
     env.push_back("REQUEST_METHOD=" + req.getMethod());
     env.push_back("QUERY_STRING" + req.getQueryParamsAsString()); //a implenter
     env.push_back("CONTENT_LENGTH=" + contentLengthStr);
+    env.push_back("CONTENT_TYPE=" + req.getHeaders().find("Content-Type")->second);
     env.push_back("SCRIPT_FILENAME=" + scriptPath);
     env.push_back("GATEWAY_INTERFACE=CGI/1.1");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
@@ -506,6 +593,7 @@ void Server::handle_cgi(RequestParser &req) {
 
         char *argv[] = { (char*)scriptPath.c_str(), NULL };
         execve(scriptPath.c_str(), argv, envp);
+        perror("[CGI] execve a échoué");
         exit(1);
     }
     else { // parent ecrit dans stdin du child ->(body), lire ce que le script a ecrit sur stdout
@@ -520,6 +608,11 @@ void Server::handle_cgi(RequestParser &req) {
         while ((bytesRead = read(out_pipe[0], buffer, sizeof(buffer))) > 0) {
             cgi_output.append(buffer, bytesRead);
         }
+        if (cgi_output.empty()) {
+            std::cerr << "[CGI] Aucune sortie du sript CGI" << std::endl;
+            response_html = makeErrorPage(500);
+            return;
+        }
         close(out_pipe[0]);
 
         waitpid(pid, NULL, 0);
@@ -527,27 +620,59 @@ void Server::handle_cgi(RequestParser &req) {
             free(envp[i]);
         delete[] envp;
         
+        // size_t header_end = cgi_output.find("\r\n\r\n");
+        // if (header_end == std::string::npos)
+        //     header_end = cgi_output.find("\n\n");
+        // if (header_end == std::string::npos){
+        //     response_html = makeErrorPage(500);
+        //     return;
+        // }
+
+        // std::string headers = cgi_output.substr(0, header_end);
+        // std::string body = cgi_output.substr(header_end + 4);
         size_t header_end = cgi_output.find("\r\n\r\n");
-        if (header_end == std::string::npos)
+        size_t skip = 4;
+        if (header_end == std::string::npos) {
             header_end = cgi_output.find("\n\n");
-        if (header_end == std::string::npos){
+            skip = 2;
+        }
+        if (header_end == std::string::npos) {
             response_html = makeErrorPage(500);
             return;
         }
 
         std::string headers = cgi_output.substr(0, header_end);
-        std::string body = cgi_output.substr(header_end + 4);
+        std::string body = cgi_output.substr(header_end + skip);
 
+        // std::string contentType = "text/html";
+        // std::string status = "200 OK";
+
+        // std::istringstream headerStream(headers);
+        // std::string line;
+        // while (std::getline(headerStream, line)) {
+        //     if (line.find("Content-Type:") == 0)
+        //         contentType = trim(line.substr(13));
+        //     else if (line.find("Status:") == 0)
+        //         status = trim(line.substr(7));
+        // }
         std::string contentType = "text/html";
         std::string status = "200 OK";
+        bool hasContentType = false;
 
         std::istringstream headerStream(headers);
         std::string line;
         while (std::getline(headerStream, line)) {
-            if (line.find("Content-Type:") == 0)
-                contentType = trim(line.substr(13));
+            if (line.find("Content-Type:") == 0) {
+                contentType = Utils::trim(line.substr(13));
+                hasContentType = true;
+            }
             else if (line.find("Status:") == 0)
-                status = trim(line.substr(7));
+                status = Utils::trim(line.substr(7));
+        }
+
+        // Si le script CGI ne renvoie pas de Content-Type
+        if (!hasContentType) {
+            std::cerr << "[CGI] Aucun Content-Type trouvé, défaut sur text/html" << std::endl;
         }
 
         std::ostringstream response;
@@ -558,7 +683,7 @@ void Server::handle_cgi(RequestParser &req) {
         response << body;
 
         response_html = response.str();
-        std::cout << "repsonse_html : " << response_html << std::endl;
+        std::cout << "response_html : " << response_html << std::endl;
     }
 }
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
     <title>Saveurs Malgaches & Françaises</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
     <header>
@@ -34,13 +34,13 @@
         <h2>Nos Recettes Vedettes</h2>
         <div class="featured-container">
             <div class="featured-item">
-                <img src="images/hello.jpeg" alt="Plat malgache traditionnel">
+                <img src="images/hello.jpeg" alt="Plat malgache traditionnel" width="600" height="400">
                 <h3>Cuisine Malgache</h3>
                 <p>Découvrez les saveurs exotiques et épicées de Madagascar à travers nos recettes authentiques.</p>
                 <a href="recettes-malgaches.html" class="btn-secondary">Voir les recettes</a>
             </div>
             <div class="featured-item">
-                <img src="images/france.jpeg" alt="Plat français traditionnel">
+                <img src="images/france.jpeg" alt="Plat français traditionnel" width="300" height="200">
                 <h3>Cuisine Française</h3>
                 <p>Explorez l'élégance et le raffinement de la gastronomie française avec nos recettes sélectionnées.</p>
                 <a href="recettes-francaises.html" class="btn-secondary">Voir les recettes</a>
@@ -52,7 +52,7 @@
         <h2>Qui Sommes-Nous?</h2>
         <div class="about-container">
             <div class="about-image">
-                <img src="images/auteurs.jpg" alt="Les créateurs du site">
+                <img src="images/auteurs.jpg" alt="Les créateurs du site" width="600" height="400">
             </div>
             <div class="about-text">
                 <p>Nous sommes To'iki, Simon et Ismael, trois entrepreneurs passionnés par la cuisine et le partage culturel. Notre site est né de notre désir de faire découvrir les richesses culinaires de Madagascar et de la France.</p>
@@ -64,20 +64,20 @@
     <section class="upload-section">
         <h3>Partagez Votre Recette</h3>
         <p>Envie de partager une saveur malgache ou française ? Remplissez le formulaire ci-dessous :</p>
-        <form action="/cgi-bin/upload_recette.py" method="post" enctype="multipart/form-data" style="position: fixed; bottom: 0; width: 100%; background: #f8f9fa; padding: 10px; border-top: 1px solid #ccc;">
-            <label for="titre">Titre de la recette :</label>
-            <input type="text" id="titre" name="titre" required>
+        <form action="/cgi-bin/upload_recette.py" method="POST" enctype="multipart/form-data">
+            <label for="titre">Titre :</label>
+            <input type="text" id="titre" name="titre" required><br>
 
             <label for="auteur">Auteur :</label>
-            <input type="text" id="auteur" name="auteur" required>
+            <input type="text" id="auteur" name="auteur" required><br>
 
-            <label for="recette">Recette :</label>
-            <textarea id="recette" name="recette" rows="4" required></textarea>
+            <label for="recette">Recette :</label><br>
+            <textarea id="recette" name="recette" rows="5" cols="40" required></textarea><br>
 
-            <label for="image">Image (optionnel) :</label>
-            <input type="file" id="image" name="image" accept="image/*">
+            <label for="image">Image (facultatif) :</label>
+            <input type="file" id="image" name="image" accept=".jpg,.jpeg,.png"><br>
 
-            <button type="submit">Envoyer la recette</button>
+            <input type="submit" value="Envoyer">
         </form>
     </section>
 
@@ -102,7 +102,10 @@
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; 2025 Saveurs Malgaches & Françaises. Tous droits réservés.</p>
+            <p>&copy; <span id="current-year"></span> Saveurs Malgaches & Françaises. Tous droits réservés.</p>
+            <script>
+                document.getElementById('current-year').textContent = new Date().getFullYear();
+            </script>
         </div>
     </footer>
 </body>

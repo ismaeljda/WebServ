@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include "../Request/utils.hpp"
 
 Server::Server(int port)
 {
