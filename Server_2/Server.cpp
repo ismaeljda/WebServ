@@ -31,7 +31,40 @@ Server::Server(const ServerConfig &conf) : config(conf){
 
 Server::~Server()
 {
-    close(server_fd);
+    std::cout << "🧹 Destruction du serveur (port " << config.listen << ")..." << std::endl;
+    
+    // 1. Fermer le socket d'écoute principal avec vérification
+    if (server_fd >= 0) {
+        int result = close(server_fd);
+        if (result == -1) {
+            std::cerr << "⚠️ Erreur fermeture socket: " << strerror(errno) << std::endl;
+        }
+        server_fd = -1;
+    }
+    
+    // 2. Nettoyer response_body (version C++98)
+    if (!response_body.empty()) {
+        response_body.clear();
+        std::vector<char>().swap(response_body);  // C++98 - Force la libération mémoire
+    }
+    
+    // 3. Nettoyer response_html (version C++98)
+    if (!response_html.empty()) {
+        response_html.clear();
+        std::string().swap(response_html);  // C++98 - Force la libération mémoire
+    }
+    
+    // 4. Fermer tous les file descriptors dans fds
+    for (std::vector<pollfd>::iterator it = fds.begin(); it != fds.end(); ++it) {
+        if (it->fd >= 0 && it->fd != server_fd) {  // Pas déjà fermé
+            close(it->fd);
+            it->fd = -1;
+        }
+    }
+    fds.clear();
+    std::vector<pollfd>().swap(fds);  // C++98 - Force la libération mémoire
+    
+    std::cout << "✅ Serveur détruit proprement (port " << config.listen << ")" << std::endl;
 }
 
 int Server::getServerfd() const {
@@ -114,8 +147,8 @@ void Server::handleClient(int fd) {
         close(fd);
         return;
     }
-    std::cout << "Requête reçue (FD " << fd << ") :" << std::endl;
-    std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
+    // std::cout << "Requête reçue (FD " << fd << ") :" << std::endl;
+    // std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
     RequestParser request;
     if (!request.parse(requestStr)) {
         std::cerr << "Keep-Alive" << std::endl;
