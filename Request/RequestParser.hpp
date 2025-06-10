@@ -7,6 +7,9 @@
 #include <sstream>
 #include <map>
 #include "utils.hpp"
+#include "../Server_2/Server.hpp"
+
+class Server;
 
 std::string trim(const std::string &str);
 
@@ -28,7 +31,7 @@ class RequestParser
         bool isvalidMethod(const std::string& method) const;
         bool isvalidVersion(const std::string& version) const;
         bool isvalidHeader(const std::map<std::string, std::string> header) const;
-        bool parse(std::string& str);
+        bool parse(std::string& str, Server *server, std::string &response_html);
         void display_request();
         
         std::string getQueryParamsAsString() const;

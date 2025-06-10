@@ -146,8 +146,9 @@ void Server::handleClient(int fd)
     std::cout << "Received request (FD " << fd << ")" << std::endl;
     // std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
     RequestParser request;
-    if (!request.parse(requestStr)) 
+    if (!request.parse(requestStr, this, response_html)) 
     {
+        send(fd, response_html.c_str(), response_html.size(), 0);
         std::cerr << "Keep-Alive" << std::endl;
         close(fd);
         return;

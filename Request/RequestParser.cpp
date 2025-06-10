@@ -33,7 +33,7 @@ bool RequestParser::isvalidHeader(const std::map<std::string, std::string> heade
     return false;
 }
 
-bool RequestParser::parse(std::string& str) 
+bool RequestParser::parse(std::string& str, Server *server, std::string &response_html) 
 {
     size_t header_end = str.find("\r\n\r\n");
     if (header_end == std::string::npos)
@@ -52,10 +52,12 @@ bool RequestParser::parse(std::string& str)
     parseQueryParams(uri);
 
     if (!RequestParser::isvalidMethod(method)) {
+        response_html = server->makeErrorPage(405);
         std::cerr << "Error: unsupported HTTP method: " << method << std::endl;
         return false;
     }
     if (!RequestParser::isvalidVersion(version)) {
+        response_html = server->makeErrorPage(400);
         std::cerr << "Error: not an HTTP version supported: " << version << std::endl;
         return false;
     }
@@ -77,6 +79,7 @@ bool RequestParser::parse(std::string& str)
     }
     if (!RequestParser::isvalidHeader(headers)) 
     {
+        response_html = server->makeErrorPage(400);
         std::cerr << "Error: invalid header:" << std::endl;
         return false; // Faudra set un code d'erreur ici
     }

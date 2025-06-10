@@ -23,6 +23,8 @@
 #include "../Config/ConfigParser.hpp"
 #include "../Request/HttpStatusCodes.hpp"
 
+class RequestParser;
+
 std::string extractMimeType(std::string& headerValue);
 
 enum type {
