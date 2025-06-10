@@ -552,103 +552,215 @@ bool Server::isCgiRequest(const LocationConfig *loc, const std::string &uri)
     return false;
 }
 
-void Server::handle_cgi(RequestParser &req) 
-{
+void Server::handle_cgi(RequestParser &req) {
     const LocationConfig *loc = matchLocation(req.getUri());
-    if (!loc) 
-    {
+    if (!loc) {
         response_html = makeErrorPage(404);
         return;
     }
 
     std::string scriptPath = loc->cgi_pass;
 
+    // Construction du chemin du script
     if (loc->cgi_pass[loc->cgi_pass.size() - 1] == '/') {
         std::string relative_path = req.getUri().substr(loc->path.length());
-
         if (!relative_path.empty() && relative_path[0] == '/')
             relative_path = relative_path.substr(1);
-
         scriptPath = loc->cgi_pass + relative_path;
-    } else {
-        scriptPath = loc->cgi_pass;
     }
+    
+    // Vérifie que le script existe + exécutable
     if (access(scriptPath.c_str(), X_OK) != 0) {
-        std::cerr << "[CGI] Fichier CGI introuvable ou non exécutable : " << scriptPath << std::endl;
+        std::cerr << "[CGI] Script non trouvé ou non exécutable: " << scriptPath << std::endl;
         response_html = makeErrorPage(404);
         return;
     }
-    std::vector<std::string> env;
 
+    //Vérifie la taille du body
+    const size_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB max
+    if (req.getBody().size() > MAX_BODY_SIZE) {
+        std::cerr << "[CGI] Body trop volumineux: " << req.getBody().size() << " bytes" << std::endl;
+        response_html = makeErrorPage(413);
+        return;
+    }
+
+    // Prépare variables d'environnement
+    std::vector<std::string> env;
     std::ostringstream oss;
     oss << req.getBody().size();
     std::string contentLengthStr = oss.str();
 
     env.push_back("REQUEST_METHOD=" + req.getMethod());
-    env.push_back("QUERY_STRING" + req.getQueryParamsAsString()); //a implenter
+    env.push_back("QUERY_STRING=" + req.getQueryParamsAsString());
     env.push_back("CONTENT_LENGTH=" + contentLengthStr);
-    env.push_back("CONTENT_TYPE=" + req.getHeaders().find("Content-Type")->second);
+    
+    //Accès secure au Content-Type
+    std::map<std::string, std::string>::const_iterator ct_it = req.getHeaders().find("Content-Type");
+    if (ct_it != req.getHeaders().end()) {
+        env.push_back("CONTENT_TYPE=" + ct_it->second);
+    } else {
+        env.push_back("CONTENT_TYPE=");
+    }
+    
     env.push_back("SCRIPT_FILENAME=" + scriptPath);
     env.push_back("GATEWAY_INTERFACE=CGI/1.1");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
     env.push_back("REDIRECT_STATUS=200");
+    env.push_back("SERVER_NAME=" + config.server_name);
+    
+    std::ostringstream port_oss;
+    port_oss << config.listen;
+    env.push_back("SERVER_PORT=" + port_oss.str());
 
-    //convertir en char 
-    char **envp = new char*[env.size() + 1]; // +1 pour NULL final
-    for (size_t i = 0; i < env.size(); ++i)
-        envp[i] = strdup(env[i].c_str()); 
+    // Conversion en char** pour variable env
+    char **envp = new(std::nothrow) char*[env.size() + 1];
+    if (!envp) {
+        std::cerr << "[CGI] Erreur allocation environnement" << std::endl;
+        response_html = makeErrorPage(500);
+        return;
+    }
+
+    //Protection strdup
+    bool allocation_failed = false;
+    for (size_t i = 0; i < env.size(); ++i) {
+        envp[i] = strdup(env[i].c_str());
+        if (!envp[i]) {
+            allocation_failed = true;
+            // Nettoyer les alloc
+            for (size_t j = 0; j < i; ++j) {
+                free(envp[j]);
+            }
+            break;
+        }
+    }
+    
+    if (allocation_failed) {
+        delete[] envp;
+        std::cerr << "[CGI] Erreur allocation variables environnement" << std::endl;
+        response_html = makeErrorPage(500);
+        return;
+    }
+    
     envp[env.size()] = NULL;
 
+    // Création pipe
     int in_pipe[2];
     int out_pipe[2];
-    if (pipe(in_pipe) == -1 || pipe(out_pipe) == -1){
+    if (pipe(in_pipe) == -1 || pipe(out_pipe) == -1) {
+        for (size_t i = 0; i < env.size(); ++i) {
+            free(envp[i]);
+        }
+        delete[] envp;
+        std::cerr << "[CGI] Erreur création pipes" << std::endl;
         response_html = makeErrorPage(500);
         return;
     }
+    
     pid_t pid = fork();
     if (pid == -1) {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        for (size_t i = 0; i < env.size(); ++i) {
+            free(envp[i]);
+        }
+        delete[] envp;
+        std::cerr << "[CGI] Erreur fork" << std::endl;
         response_html = makeErrorPage(500);
         return;
     }
 
-    if (pid == 0) 
-    { //dans l'enfant -> CGI
+    if (pid == 0) { 
+        // PROCESSUS ENFANT
         dup2(in_pipe[0], STDIN_FILENO);
         dup2(out_pipe[1], STDOUT_FILENO);
 
+        // Ferme les file descriptors
+        close(in_pipe[0]);
         close(in_pipe[1]);
         close(out_pipe[0]);
+        close(out_pipe[1]);
 
         char *argv[] = { (char*)scriptPath.c_str(), NULL };
         execve(scriptPath.c_str(), argv, envp);
-        perror("[CGI] execve a échoué");
-        exit(1);
+        perror("[CGI] execve failed");
+        exit(127);
     }
-    else 
-    { // parent ecrit dans stdin du child ->(body), lire ce que le script a ecrit sur stdout
+    else { 
+        // PROCESSUS PARENT
         close(in_pipe[0]);
-        write(in_pipe[1], req.getBody().c_str(), req.getBody().size());
+        close(out_pipe[1]);
+        
+        if (!req.getBody().empty()) {
+            const char* body_data = req.getBody().c_str();
+            size_t body_size = req.getBody().size();
+            size_t written = 0;
+            
+            while (written < body_size) {
+                ssize_t result = write(in_pipe[1], body_data + written, body_size - written);
+                if (result <= 0) {
+                    std::cerr << "[CGI] Erreur écriture body" << std::endl;
+                    break;
+                }
+                written += result;
+            }
+        }
         close(in_pipe[1]);
 
-        close(out_pipe[1]);
-        char buffer[1024];
+        char buffer[4096]; 
         std::string cgi_output;
         ssize_t bytesRead;
+        size_t total_read = 0;
+        const size_t MAX_CGI_OUTPUT = 5 * 1024 * 1024; // 5MB max pour réponse CGI
+        
+        signal(SIGALRM, SIG_DFL);
+        alarm(30);
+        
         while ((bytesRead = read(out_pipe[0], buffer, sizeof(buffer))) > 0) {
-            cgi_output.append(buffer, bytesRead);
+            total_read += bytesRead;
+            
+            if (total_read > MAX_CGI_OUTPUT) {
+                std::cerr << "[CGI] Output trop volumineux (" << total_read << " bytes), arrêt" << std::endl;
+                break;
+            }
+            
+            try {
+                cgi_output.append(buffer, bytesRead);
+            } catch (const std::bad_alloc& e) {
+                std::cerr << "[CGI] Erreur mémoire lors de l'append" << std::endl;
+                break;
+            }
         }
+        
+        alarm(0); 
+        close(out_pipe[0]);
+
+        int status;
+        pid_t wait_result = waitpid(pid, &status, WNOHANG);
+        if (wait_result == 0) {
+            kill(pid, SIGTERM);
+            sleep(1);
+            waitpid(pid, &status, WNOHANG);
+            std::cerr << "[CGI] Processus tué pour timeout" << std::endl;
+        }
+        
+        for (size_t i = 0; i < env.size(); ++i) {
+            free(envp[i]);
+        }
+        delete[] envp;
+        
         if (cgi_output.empty()) {
-            std::cerr << "[CGI] Aucune sortie du sript CGI" << std::endl;
+            std::cerr << "[CGI] Aucune sortie du script CGI" << std::endl;
             response_html = makeErrorPage(500);
             return;
         }
-        close(out_pipe[0]);
 
-        waitpid(pid, NULL, 0);
-        for (size_t i = 0; i < env.size(); ++i)
-            free(envp[i]);
-        delete[] envp;
-    
+        if (cgi_output.size() > MAX_CGI_OUTPUT) {
+            std::cerr << "[CGI] Sortie CGI tronquée à " << MAX_CGI_OUTPUT << " bytes" << std::endl;
+            cgi_output = cgi_output.substr(0, MAX_CGI_OUTPUT);
+        }
+
         size_t header_end = cgi_output.find("\r\n\r\n");
         size_t skip = 4;
         if (header_end == std::string::npos) {
@@ -656,41 +768,52 @@ void Server::handle_cgi(RequestParser &req)
             skip = 2;
         }
         if (header_end == std::string::npos) {
+            std::cerr << "[CGI] Format de sortie invalide (pas de séparateur headers)" << std::endl;
             response_html = makeErrorPage(500);
             return;
         }
 
         std::string headers = cgi_output.substr(0, header_end);
-        std::string body = cgi_output.substr(header_end + skip);
-        std::string contentType = "text/html";
-        std::string status = "200 OK";
+        std::string body;
+        
+        if (header_end + skip < cgi_output.size()) {
+            body = cgi_output.substr(header_end + skip);
+        }
+
+        std::string contentType = "text/html; charset=UTF-8";
+        std::string statusMessage = "200 OK";
         bool hasContentType = false;
 
         std::istringstream headerStream(headers);
         std::string line;
         while (std::getline(headerStream, line)) {
             if (line.find("Content-Type:") == 0) {
-                contentType = Utils::trim(line.substr(13));
-                hasContentType = true;
+                std::string ct = Utils::trim(line.substr(13));
+                if (!ct.empty()) {
+                    contentType = ct;
+                    hasContentType = true;
+                }
             }
-            else if (line.find("Status:") == 0)
-                status = Utils::trim(line.substr(7));
+            else if (line.find("Status:") == 0) {
+                std::string st = Utils::trim(line.substr(7));
+                if (!st.empty()) {
+                    statusMessage = st;
+                }
+            }
         }
 
-        // Si le script CGI ne renvoie pas de Content-Type
-        if (!hasContentType) {
-            std::cerr << "[CGI] Aucun Content-Type trouvé, défaut sur text/html" << std::endl;
-        }
-
+        // Construction de la réponse finale
         std::ostringstream response;
-        response << "HTTP/1.1 " << status << "\r\n";
+        response << "HTTP/1.1 " << statusMessage << "\r\n";
+        response << "Server: webserv/1.0\r\n";
         response << "Content-Type: " << contentType << "\r\n";
         response << "Content-Length: " << body.size() << "\r\n";
+        response << "Connection: close\r\n";
         response << "\r\n";
         response << body;
 
         response_html = response.str();
-        // std::cout << "response_html : " << response_html << std::endl;
+        
+        std::cout << "[CGI] Succès - " << body.size() << " bytes générés" << std::endl;
     }
 }
-
