@@ -68,7 +68,7 @@ bool RequestParser::parse(std::string& str)
 
         size_t colon = line.find(':');
         if (colon == std::string::npos)
-            continue; // ligne mal formée : on ignore
+            continue; // si la ligne est mal formée on skip
 
         std::string key = Utils::trim(line.substr(0, colon));
         std::string value = Utils::trim(line.substr(colon + 1));
@@ -80,7 +80,6 @@ bool RequestParser::parse(std::string& str)
         std::cerr << "Error: invalid header:" << std::endl;
         return false; // Faudra set un code d'erreur ici
     }
-    // Mettre le body dans une string body
     if (header_end + 4 < str.length()) 
     {
         body = str.substr(header_end + 4);

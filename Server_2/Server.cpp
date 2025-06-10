@@ -33,7 +33,6 @@ Server::~Server()
 {
     std::cout << "🧹 Destruction du serveur (port " << config.listen << ")..." << std::endl;
     
-    // 1. Fermer le socket d'écoute principal avec vérification
     if (server_fd >= 0) {
         int result = close(server_fd);
         if (result == -1) {
@@ -42,41 +41,42 @@ Server::~Server()
         server_fd = -1;
     }
     
-    // 2. Nettoyer response_body (version C++98)
     if (!response_body.empty()) {
         response_body.clear();
-        std::vector<char>().swap(response_body);  // C++98 - Force la libération mémoire
+        std::vector<char>().swap(response_body);
     }
     
-    // 3. Nettoyer response_html (version C++98)
     if (!response_html.empty()) {
         response_html.clear();
-        std::string().swap(response_html);  // C++98 - Force la libération mémoire
+        std::string().swap(response_html);
     }
     
-    // 4. Fermer tous les file descriptors dans fds
+    // Pour Fermer tous les fd dans fds
     for (std::vector<pollfd>::iterator it = fds.begin(); it != fds.end(); ++it) {
-        if (it->fd >= 0 && it->fd != server_fd) {  // Pas déjà fermé
+        if (it->fd >= 0 && it->fd != server_fd) {  // Si Pas déjà fermé
             close(it->fd);
             it->fd = -1;
         }
     }
     fds.clear();
-    std::vector<pollfd>().swap(fds);  // C++98 - Force la libération mémoire
+    std::vector<pollfd>().swap(fds);  // Pour Force la libération mémoire
     
     std::cout << "✅ Serveur détruit proprement (port " << config.listen << ")" << std::endl;
 }
 
-int Server::getServerfd() const {
+int Server::getServerfd() const 
+{
     return server_fd;
 }
 
-int Server::getPort() const {
+int Server::getPort() const 
+{
     return config.listen;
 }
 ////////constructeur + destructeur + getter ↑↑↑↑   /////////////////////////////////////////////////////////////////////////////////////////////
 
-void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server) {
+void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &client_to_server) 
+{
     sockaddr_in clientAddr;
     socklen_t addrlen = sizeof(clientAddr);
     int client_fd = accept(server_fd, (struct sockaddr*)&clientAddr, &addrlen);
@@ -95,7 +95,8 @@ void Server::acceptClient(std::vector<pollfd> &fds, std::map<int, Server*> &clie
 }
 
 
-void Server::handleClient(int fd) {
+void Server::handleClient(int fd) 
+{
     std::string requestStr;
     char buffer[4096];
     ssize_t bytesRead;
@@ -103,30 +104,23 @@ void Server::handleClient(int fd) {
     size_t content_length = 0;
     bool headerParsed = false;
 
-    const size_t MAX_REQUEST_SIZE = 10 * 1024 * 1024;
-
-    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
+    while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) 
+    {
         requestStr.append(buffer, bytesRead);
         total_read += bytesRead;
-
-        if (total_read > MAX_REQUEST_SIZE) {
-            std::cerr << "Requête trop volumineuse" << std::endl;
-            std::string error = makeErrorPage(413);
-            send(fd, error.c_str(), error.size(), 0);
-            close(fd);
-            return;
-        }
-
         if (!headerParsed) {
             size_t headerEnd = requestStr.find("\r\n\r\n");
-            if (headerEnd != std::string::npos) {
+            if (headerEnd != std::string::npos) 
+            {
                 headerParsed = true;
 
                 std::string headers = requestStr.substr(0, headerEnd);
                 std::istringstream iss(headers);
                 std::string line;
-                while (std::getline(iss, line)) {
-                    if (line.find("Content-Length:") != std::string::npos) {
+                while (std::getline(iss, line)) 
+                {
+                    if (line.find("Content-Length:") != std::string::npos) 
+                    {
                         std::string lenStr = line.substr(line.find(":") + 1);
                         content_length = std::atoi(Utils::trim(lenStr).c_str());
                     }
@@ -135,29 +129,33 @@ void Server::handleClient(int fd) {
                     break;
             } 
         }
-        if (headerParsed) {
+        if (headerParsed) 
+        {
             size_t bodyStart = requestStr.find("\r\n\r\n") + 4;
             size_t bodySize = requestStr.size() - bodyStart;
             if (bodySize >= content_length)
                 break;
         }
     }
-    if (bytesRead < 0) {
-        std::cerr << "Erreur de lecture de FD " << fd << std::endl;
+    if (bytesRead < 0) 
+    {
+        std::cerr << "Error reading fd" << fd << std::endl;
         close(fd);
         return;
     }
-    // std::cout << "Requête reçue (FD " << fd << ") :" << std::endl;
+    std::cout << "Received request (FD " << fd << ")" << std::endl;
     // std::cout << requestStr.substr(0, requestStr.find("\r\n\r\n") + 4) << std::endl;
     RequestParser request;
-    if (!request.parse(requestStr)) {
+    if (!request.parse(requestStr)) 
+    {
         std::cerr << "Keep-Alive" << std::endl;
         close(fd);
         return;
     }
 
     const LocationConfig *loc = matchLocation(request.getUri());
-    if (loc && request.getBody().size() > config.client_max_body_size) {
+    if (loc && request.getBody().size() > config.client_max_body_size) 
+    {
         std::string error = makeErrorPage(413);
         send(fd, error.c_str(), error.size(), 0);
         close(fd);
@@ -167,7 +165,8 @@ void Server::handleClient(int fd) {
     type methodType = handle_request(request);
     if (methodType == GET ||  methodType == POST || methodType == DELETE) {
         send(fd, response_html.c_str(), response_html.size(), 0);
-        if (!response_body.empty()) {
+        if (!response_body.empty()) 
+        {
             send(fd, &response_body[0], response_body.size(), 0);
             response_body.clear();
         }
@@ -197,70 +196,6 @@ std::string getMimeType(const std::string& path) {
 }
 /////////// fonction pour trouver le type qui precede le '.' ↑↑↑↑↑///////////////////////////////////////////////////
 
-// void Server::handle_get(RequestParser &req)
-// {
-//     std::string uri = req.getUri();
-//     if (uri.empty())
-//         uri = "/";
-
-//     // Match la location la plus adaptée
-//     const LocationConfig* loc = matchLocation(uri);
-//     if (!loc) {
-//         response_html = makeErrorPage(404);
-//         return;
-//     }
-//     if (!loc->redirect.empty()) {
-//         std::ostringstream header;
-//         header << "HTTP/1.1 301 Moved Permanently\r\n";
-//         header << "Location: " << loc->redirect << "\r\n";
-//         header << "Content-Length: 0\r\n";
-//         header << "\r\n";
-//         response_html = header.str();
-//         return;
-//     }
-
-//     // Construction du chemin absolu à partir du root de la location
-//     std::string relative_path = uri.substr(loc->path.length());
-//     std::string file_path = loc->root;
-//     if (!relative_path.empty() && relative_path[0] != '/')
-//         file_path += '/';
-//     file_path += relative_path;
-
-//     // Si c’est un dossier ou qu’il finit par '/', on ajoute index
-//     struct stat sb;
-//     if (stat(file_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-//         if (!loc->index.empty()) {
-//             if (file_path[file_path.size() - 1] != '/')
-//                 file_path += '/';
-//             file_path += loc->index;
-//     } else if (loc->directory_listing) {
-//         response_html = generateAutoindexHTML(file_path, req.getUri());
-//         return;
-//     } else {
-//         response_html = makeErrorPage(403);
-//         return;
-//         }
-//     }
-
-//     // Lire le fichier cible
-//     std::ifstream file(file_path.c_str(), std::ios::binary);
-//     if (!file.is_open()) {
-//         response_html = makeErrorPage(404);
-//         return;
-//     }
-
-//     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-//     file.close();
-
-//     std::ostringstream header;
-//     header << "HTTP/1.1 200 OK\r\n";
-//     header << "Content-Type: " << getMimeType(file_path) << "\r\n";
-//     header << "Content-Length: " << buffer.size() << "\r\n";
-//     header << "\r\n";
-
-//     response_html = header.str();
-//     response_body = buffer;
-// }
 void Server::handle_get(RequestParser &req)
 {
     std::string uri = req.getUri();
@@ -307,7 +242,7 @@ void Server::handle_get(RequestParser &req)
         }
     }
 
-    // Lire le fichier cible
+    // Lire et ouvrir le fichier
     std::ifstream file(file_path.c_str(), std::ios::binary);
     if (!file.is_open()) {
         response_html = makeErrorPage(404);
@@ -328,15 +263,18 @@ void Server::handle_get(RequestParser &req)
     response_body = buffer;
 }
 
-void Server::handle_post(RequestParser &req) {
+void Server::handle_post(RequestParser &req) 
+{
     const LocationConfig* loc = matchLocation(req.getUri());
-    if (!loc) {
+    if (!loc) 
+    {
         response_html = makeErrorPage(404);
         return;
     }
-    std::string body = req.getBody(); // récupère le body parsé
+    std::string body = req.getBody();
 
-    if (body.size() > config.client_max_body_size) {
+    if (body.size() > config.client_max_body_size) 
+    {
         std::cout << "[413] Payload Too Large (" << body.size() << " > " << config.client_max_body_size << ")" << std::endl;
         response_html = makeErrorPage(413);
         return;
@@ -348,7 +286,8 @@ void Server::handle_post(RequestParser &req) {
         target_path = loc->root + "/upload_result.txt";
 
     std::ofstream out(target_path.c_str(), std::ios::app);
-    if (!out.is_open()) {
+    if (!out.is_open()) 
+    {
         response_html = makeErrorPage(500);
         return;
     }
@@ -365,17 +304,10 @@ void Server::handle_post(RequestParser &req) {
     header << "\r\n";
 
     response_html = header.str() + response_body_content;
-    // std::string response_body = "<html><body>POST received and saved.</body></html>";
-    // std::ostringstream header;
-    // header << "HTTP/1.1 200 OK\r\n";
-    // header << "Content-Type: text/html\r\n";
-    // header << "Content-Length: " << response_body.size() << "\r\n";
-    // header << "\r\n";
-
-    // response_html = header.str() + response_body;
 }
 
-void Server::handle_delete(RequestParser &req) {
+void Server::handle_delete(RequestParser &req) 
+{
     const LocationConfig *loc = matchLocation(req.getUri());
     if (!loc) {
         response_html = makeErrorPage(404);
@@ -403,30 +335,20 @@ void Server::handle_delete(RequestParser &req) {
     header << "Connection: close\r\n";
     header << "\r\n";
     
-    response_html = header.str() + body_content;  // LIGNE IMPORTANTE
+    response_html = header.str() + body_content;
     }
-    // if (remove(file_path.c_str()) == 0) {
-    //     std::string body = "<html><body><h1>File deleted successfully.</h1></body></html>";
-    //     std::ostringstream header;
-    //     header << "HTTP/1.1 200 ok\r\n";
-    //     header << "Content-Type: text/html\r\n";
-    //     header << "Content-Length: " << body.size() << "\r\n";
-    //     header << "\r\n";
-        
-    //     response_html = header.str() + body; 
-    // } else {
-    //     response_html = makeErrorPage(403);
-    // }
 }
 
 type Server::handle_request(RequestParser &req)
 {
     const LocationConfig *loc = matchLocation(req.getUri());
-    if (!loc) {
+    if (!loc) 
+    {
         response_html = makeErrorPage(404);
         return NONE;
     }
-    if (req.getMethod() == "HEAD") {
+    if (req.getMethod() == "HEAD") 
+    {
         handle_get(req);
         response_body.clear();
         return GET;
@@ -474,7 +396,8 @@ type Server::handle_request(RequestParser &req)
 }
 //////// Fonction pour gerer request -> GET / POST / DELETE ↑↑↑↑↑↑↑↑↑ //////////////////////////////////////////////////
 
-std::string Server::generateAutoindexHTML(const std::string &dir_path, const std::string &uri) {
+std::string Server::generateAutoindexHTML(const std::string &dir_path, const std::string &uri) 
+{
 	DIR *dir = opendir(dir_path.c_str());
 	if (!dir)
 		return makeErrorPage(403);
@@ -550,15 +473,16 @@ std::string Server::makeErrorPage(int code) const {
         }
     }
     
-    if (body.empty()) {
+    if (body.empty()) 
+    {
         std::ostringstream ss;
-        std::string error_message = "Error";  // Message par défaut
+        std::string error_message = "Error";
         
         // Essayer d'obtenir le message d'erreur, avec fallback
         try {
             error_message = HttpStatusCodes::getMessage((HttpStatusCodes::Code)code);
         } catch (...) {
-            // Si getMessage échoue, utiliser des messages standard
+            // Si getMessage échoue ca utilise des messages standard
             switch(code) {
                 case 400: error_message = "Bad Request"; break;
                 case 403: error_message = "Forbidden"; break;
@@ -594,57 +518,27 @@ std::string Server::makeErrorPage(int code) const {
     }
     
     header << "\r\n";
-    header << "Server: webserv/1.0\r\n";              // AJOUTÉ
+    header << "Server: webserv/1.0\r\n";
     header << "Content-Type: text/html\r\n";
     header << "Content-Length: " << body.size() << "\r\n";
-    header << "Connection: close\r\n";                // AJOUTÉ
+    header << "Connection: close\r\n";
     header << "\r\n";
     header << body;
 
     return header.str();
 }
-// std::string Server::makeErrorPage(int code) const {
-//     std::string body;
-//     std::string filepath;
-
-//     std::map<int, std::string>::const_iterator it = config.error_pages.find(code);
-//     if (it != config.error_pages.end()) {
-//         filepath = it->second;
-//         std::ifstream file(filepath.c_str(), std::ios::binary);
-//         if (file.is_open()) {
-//             std::ostringstream ss;
-//             ss << file.rdbuf();
-//             body = ss.str();
-//             file.close();
-//         }
-//     }
-
-//     if (body.empty()) {
-//         std::ostringstream ss;
-//         ss << "<html><head><title>" << code << " Error</title></head>"
-//            << "<body><h1>" << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "</h1></body></html>";
-//         body = ss.str();
-//     }
-
-//     std::ostringstream header;
-//     header << "HTTP/1.1 " << code << " " << HttpStatusCodes::getMessage((HttpStatusCodes::Code)code) << "\r\n";
-//     header << "Content-Type: text/html\r\n";
-//     header << "Content-Length: " << body.size() << "\r\n";
-//     header << "\r\n";
-//     header << body;
-
-//     return header.str();
-// }
 
 ////////////////////////// Fonction pour les Pages Erreur pour le serveur ↑↑↑↑↑↑↑↑//////////////////////////////////////////////////////////
 //////////////Fonction Pour CGI below : /////////////////////////////////////////////////////////////////
 
-bool Server::isCgiRequest(const LocationConfig *loc, const std::string &uri) {
+bool Server::isCgiRequest(const LocationConfig *loc, const std::string &uri) 
+{
     if (!loc || loc->cgi_pass.empty())
         return false;
 
     // Si l'extension est explicite
-    for (size_t i = 0; i < loc->cgi_extensions.size(); ++i) {
+    for (size_t i = 0; i < loc->cgi_extensions.size(); ++i) 
+    {
         const std::string &ext = loc->cgi_extensions[i];
         if (uri.size() >= ext.size() &&
             uri.compare(uri.size() - ext.size(), ext.size(), ext) == 0)
@@ -658,9 +552,11 @@ bool Server::isCgiRequest(const LocationConfig *loc, const std::string &uri) {
     return false;
 }
 
-void Server::handle_cgi(RequestParser &req) {
+void Server::handle_cgi(RequestParser &req) 
+{
     const LocationConfig *loc = matchLocation(req.getUri());
-    if (!loc) {
+    if (!loc) 
+    {
         response_html = makeErrorPage(404);
         return;
     }
@@ -700,7 +596,7 @@ void Server::handle_cgi(RequestParser &req) {
     //convertir en char 
     char **envp = new char*[env.size() + 1]; // +1 pour NULL final
     for (size_t i = 0; i < env.size(); ++i)
-        envp[i] = strdup(env[i].c_str()); // copie en mémoire dynamique
+        envp[i] = strdup(env[i].c_str()); 
     envp[env.size()] = NULL;
 
     int in_pipe[2];
@@ -715,7 +611,8 @@ void Server::handle_cgi(RequestParser &req) {
         return;
     }
 
-    if (pid == 0) { //dans l'enfant -> CGI
+    if (pid == 0) 
+    { //dans l'enfant -> CGI
         dup2(in_pipe[0], STDIN_FILENO);
         dup2(out_pipe[1], STDOUT_FILENO);
 
@@ -727,7 +624,8 @@ void Server::handle_cgi(RequestParser &req) {
         perror("[CGI] execve a échoué");
         exit(1);
     }
-    else { // parent ecrit dans stdin du child ->(body), lire ce que le script a ecrit sur stdout
+    else 
+    { // parent ecrit dans stdin du child ->(body), lire ce que le script a ecrit sur stdout
         close(in_pipe[0]);
         write(in_pipe[1], req.getBody().c_str(), req.getBody().size());
         close(in_pipe[1]);
@@ -750,17 +648,7 @@ void Server::handle_cgi(RequestParser &req) {
         for (size_t i = 0; i < env.size(); ++i)
             free(envp[i]);
         delete[] envp;
-        
-        // size_t header_end = cgi_output.find("\r\n\r\n");
-        // if (header_end == std::string::npos)
-        //     header_end = cgi_output.find("\n\n");
-        // if (header_end == std::string::npos){
-        //     response_html = makeErrorPage(500);
-        //     return;
-        // }
-
-        // std::string headers = cgi_output.substr(0, header_end);
-        // std::string body = cgi_output.substr(header_end + 4);
+    
         size_t header_end = cgi_output.find("\r\n\r\n");
         size_t skip = 4;
         if (header_end == std::string::npos) {
@@ -774,18 +662,6 @@ void Server::handle_cgi(RequestParser &req) {
 
         std::string headers = cgi_output.substr(0, header_end);
         std::string body = cgi_output.substr(header_end + skip);
-
-        // std::string contentType = "text/html";
-        // std::string status = "200 OK";
-
-        // std::istringstream headerStream(headers);
-        // std::string line;
-        // while (std::getline(headerStream, line)) {
-        //     if (line.find("Content-Type:") == 0)
-        //         contentType = trim(line.substr(13));
-        //     else if (line.find("Status:") == 0)
-        //         status = trim(line.substr(7));
-        // }
         std::string contentType = "text/html";
         std::string status = "200 OK";
         bool hasContentType = false;
@@ -814,7 +690,7 @@ void Server::handle_cgi(RequestParser &req) {
         response << body;
 
         response_html = response.str();
-        std::cout << "response_html : " << response_html << std::endl;
+        // std::cout << "response_html : " << response_html << std::endl;
     }
 }
 

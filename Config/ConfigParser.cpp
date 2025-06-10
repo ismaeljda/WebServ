@@ -24,7 +24,8 @@ ConfigParser::ConfigParser(const std::string &path)
 
 ConfigParser::~ConfigParser() {}
 
-void ConfigParser::parseServerBlock(std::ifstream &file, std::string &line) {
+void ConfigParser::parseServerBlock(std::ifstream &file, std::string &line) 
+{
 	ServerConfig server;
 	while (std::getline(file, line))
 	{
@@ -41,7 +42,8 @@ void ConfigParser::parseServerBlock(std::ifstream &file, std::string &line) {
 	servers.push_back(server);
 }
 
-void ConfigParser::parseDirective(const std::string &line, ServerConfig &server) {
+void ConfigParser::parseDirective(const std::string &line, ServerConfig &server) 
+{
 	std::vector<std::string> tokens = Utils::split(line);
 	if (tokens.empty())
 		return;
@@ -72,7 +74,8 @@ void ConfigParser::parseDirective(const std::string &line, ServerConfig &server)
 		throw std::runtime_error("Directive inconnue dans server block : " + line );
 }
 
-void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server) {
+void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, ServerConfig &server) 
+{
 	LocationConfig location;
 
 	std::vector<std::string> tokens = Utils::split(line);
@@ -82,7 +85,8 @@ void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, Se
 	}
 	location.path = tokens[1]; //ce qui commence par "/ ..."
 
-	while (std::getline(file, line)) {
+	while (std::getline(file, line)) 
+	{
 		line = Utils::trim(line);
 		if (line.empty() || line[0] == '#')
 			continue;
@@ -93,7 +97,8 @@ void ConfigParser::parseLocationBlock(std::ifstream &file, std::string &line, Se
 	server.locations.push_back(location);
 }
 
-void ConfigParser::parseLocationDirective(const std::string &line, LocationConfig &location) {
+void ConfigParser::parseLocationDirective(const std::string &line, LocationConfig &location) 
+{
 	std::vector<std::string> tokens = Utils::split(line);
 	if (tokens.empty())
 		return;
@@ -151,7 +156,8 @@ size_t ConfigParser::parseSize(const std::string &sizeStr) {
     size_t i = 0;
 
     // Vérifie que les premiers caractères sont bien des chiffres
-    while (i < sizeStr.length() && std::isdigit(sizeStr[i])) {
+    while (i < sizeStr.length() && std::isdigit(sizeStr[i])) 
+	{
         num = num * 10 + (size_t)(sizeStr[i] - '0');
         ++i;
     }
@@ -161,14 +167,16 @@ size_t ConfigParser::parseSize(const std::string &sizeStr) {
         throw std::runtime_error("Erreur : aucun chiffre trouvé dans client_max_body_size : " + sizeStr);
 
     // Si une unité est présente
-    if (i < sizeStr.length()) {
+    if (i < sizeStr.length()) 
+	{
         char unit = std::toupper(sizeStr[i]);
 
         // Vérifie qu'il n'y a pas de caractères supplémentaires
         if (i + 1 != sizeStr.length())
             throw std::runtime_error("Erreur : unité invalide ou trop longue dans client_max_body_size : " + sizeStr);
 
-        switch (unit) {
+        switch (unit) 
+		{
             case 'K': return num * 1024;
             case 'M': return num * 1024 * 1024;
             case 'G': return num * 1024 * 1024 * 1024;
@@ -186,10 +194,12 @@ size_t ConfigParser::parseSize(const std::string &sizeStr) {
 
 ///// Validate function pour ServerConfig///////////////////////////////////////////////////////////////////////////////////////////
 
-void ConfigParser::validateServers() const {
+void ConfigParser::validateServers() const 
+{
 	std::set<int> usedPorts;
 
-	for (size_t i = 0; i < servers.size(); ++i){
+	for (size_t i = 0; i < servers.size(); ++i)
+	{
 		const ServerConfig &server = servers[i];
 		
 		if (server.listen < 1 || server.listen > 65535)
@@ -199,7 +209,8 @@ void ConfigParser::validateServers() const {
 		usedPorts.insert(server.listen);
 
 		bool hasRootLocation = false;
-		for (size_t j = 0; j < server.locations.size(); ++j) {
+		for (size_t j = 0; j < server.locations.size(); ++j) 
+		{
 			if (server.locations[j].path == "/") {
 				hasRootLocation = true;
 				break;
@@ -208,15 +219,18 @@ void ConfigParser::validateServers() const {
 		if (!hasRootLocation)
 			throw std::runtime_error("Erreur: le serveur n'a pas de location /");
 		
-		for (std::map<int, std::string>::const_iterator it = server.error_pages.begin(); it != server.error_pages.end(); ++it) {
+		for (std::map<int, std::string>::const_iterator it = server.error_pages.begin(); it != server.error_pages.end(); ++it) 
+		{
 			if (access(it->second.c_str(), F_OK) == -1)
 				throw std::runtime_error("Erreur: fichier error_page introuvable : " + it->second);
 		}
 
-		for (size_t j = 0; j < server.locations.size(); ++j) {
+		for (size_t j = 0; j < server.locations.size(); ++j) 
+		{
 			const LocationConfig &loc = server.locations[j];
 
-			for (size_t k = 0; k < loc.allow_methods.size(); ++k) {
+			for (size_t k = 0; k < loc.allow_methods.size(); ++k) 
+			{
 				const std::string &method = loc.allow_methods[k];
 				if (method != "GET" && method != "POST" && method != "DELETE")
 					throw std::runtime_error("Erreur: methode HTTP invalide : " + method + " dans location " + loc.path);

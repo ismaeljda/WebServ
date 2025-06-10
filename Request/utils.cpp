@@ -55,7 +55,7 @@ std::string extractMimeType(std::string& headerValue) {
             return token;
         }
     }
-    return ""; // rien trouvé
+    return "";
 }
 
 }
